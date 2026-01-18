@@ -102,7 +102,7 @@ class TestBudClientAuthResolution:
 
     def test_client_raises_without_any_auth(self) -> None:
         """Client should raise ValueError without any auth credentials."""
-        # Clear any env vars that might provide auth
+        # Clear any env vars that might provide auth and mock stored tokens
         with patch.dict(
             os.environ,
             {
@@ -113,8 +113,9 @@ class TestBudClientAuthResolution:
             },
             clear=True,
         ):
-            with pytest.raises(ValueError, match="No authentication"):
-                BudClient(base_url="https://api.example.com")
+            with patch.object(BudClient, "_load_stored_tokens", return_value=None):
+                with pytest.raises(ValueError, match="No authentication"):
+                    BudClient(base_url="https://api.example.com")
 
     def test_client_auth_priority_api_key_first(self) -> None:
         """API key should have highest priority when multiple provided."""

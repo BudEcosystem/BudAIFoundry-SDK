@@ -135,6 +135,7 @@ class TestBudClientConfigAuth:
         with (
             patch("bud._config.CONFIG_FILE", config_file),
             patch.dict(os.environ, {}, clear=True),
+            patch.object(BudClient, "_load_stored_tokens", return_value=None),
         ):
             with pytest.raises(ValueError, match="No authentication"):
                 BudClient(base_url="https://api.example.com")

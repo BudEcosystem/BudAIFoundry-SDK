@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from bud.auth import APIKeyAuth
@@ -10,10 +12,11 @@ from bud.client import BudClient
 
 def test_client_requires_auth() -> None:
     """Test that client raises error without any authentication."""
-    with pytest.raises(ValueError) as exc_info:
-        BudClient(base_url="https://api.example.com")
+    with patch.object(BudClient, "_load_stored_tokens", return_value=None):
+        with pytest.raises(ValueError) as exc_info:
+            BudClient(base_url="https://api.example.com")
 
-    assert "No authentication" in str(exc_info.value)
+        assert "No authentication" in str(exc_info.value)
 
 
 def test_client_with_api_key(api_key: str, base_url: str) -> None:

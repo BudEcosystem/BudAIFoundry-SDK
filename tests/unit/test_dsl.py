@@ -2,50 +2,51 @@
 
 from __future__ import annotations
 
-from bud.dsl import Pipeline, Task, parallel, sequence
+from bud.dsl import Action, Pipeline, parallel, sequence
 
 
-def test_task_creation() -> None:
-    """Test creating a task."""
-    task = Task("build", action="bud.docker.build")
+def test_action_creation() -> None:
+    """Test creating an action."""
+    action = Action("build", type="docker_build")
 
-    assert task.name == "build"
-    assert task.action == "bud.docker.build"
-
-
-def test_task_after() -> None:
-    """Test task dependency with after()."""
-    task1 = Task("first")
-    task2 = Task("second").after(task1)
-
-    assert task1 in task2._depends_on
+    assert action.name == "build"
+    assert action.type == "docker_build"
 
 
-def test_task_with_config() -> None:
-    """Test task configuration."""
-    task = Task("build").with_config(image="python:3.11", tag="latest")
+def test_action_after() -> None:
+    """Test action dependency with after()."""
+    action1 = Action("first")
+    action2 = Action("second").after(action1)
 
-    assert task.config["image"] == "python:3.11"
-    assert task.config["tag"] == "latest"
-
-
-def test_task_with_retry() -> None:
-    """Test task retry configuration."""
-    task = Task("flaky").with_retry(max_attempts=5, delay=2)
-
-    assert task.retry["max_attempts"] == 5
-    assert task.retry["delay"] == 2
+    assert action1 in action2._depends_on
 
 
-def test_task_to_node() -> None:
-    """Test converting task to DAG node."""
-    task = Task("build", action="bud.docker.build")
-    task.with_timeout(300)
+def test_action_with_config() -> None:
+    """Test action configuration."""
+    action = Action("build").with_config(image="python:3.11", tag="latest")
 
-    node = task.to_node()
+    assert action.config["image"] == "python:3.11"
+    assert action.config["tag"] == "latest"
+
+
+def test_action_with_retry() -> None:
+    """Test action retry configuration."""
+    action = Action("flaky").with_retry(max_attempts=5, delay=2)
+
+    assert action.retry is not None
+    assert action.retry["max_attempts"] == 5
+    assert action.retry["delay"] == 2
+
+
+def test_action_to_node() -> None:
+    """Test converting action to DAG node."""
+    action = Action("build", type="docker_build")
+    action.with_timeout(300)
+
+    node = action.to_node()
 
     assert node["name"] == "build"
-    assert node["action_id"] == "bud.docker.build"
+    assert node["action_id"] == "docker_build"
     assert node["timeout"] == 300
 
 
@@ -57,33 +58,33 @@ def test_pipeline_creation() -> None:
     assert len(p._tasks) == 0
 
 
-def test_pipeline_add_task() -> None:
-    """Test adding tasks to pipeline."""
+def test_pipeline_add_action() -> None:
+    """Test adding actions to pipeline."""
     p = Pipeline("test")
-    task = Task("step1")
-    p.add(task)
+    action = Action("step1")
+    p.add(action)
 
     assert len(p._tasks) == 1
-    assert p.tasks["step1"] == task
+    assert p.actions["step1"] == action
 
 
 def test_pipeline_context_manager() -> None:
-    """Test pipeline context manager auto-adds tasks."""
+    """Test pipeline context manager auto-adds actions."""
     with Pipeline("test") as p:
-        build = Task("build")
-        test = Task("test").after(build)
+        build = Action("build")
+        test = Action("test").after(build)
 
     assert len(p._tasks) == 2
-    assert "build" in p.tasks
-    assert "test" in p.tasks
+    assert "build" in p.actions
+    assert "test" in p.actions
 
 
 def test_pipeline_to_dag() -> None:
     """Test converting pipeline to DAG."""
     with Pipeline("deploy") as p:
-        build = Task("build", action="bud.docker.build")
-        test = Task("test", action="bud.test.pytest").after(build)
-        deploy = Task("deploy", action="bud.k8s.apply").after(test)
+        build = Action("build", type="docker_build")
+        test = Action("test", type="pytest").after(build)
+        deploy = Action("deploy", type="k8s_apply").after(test)
 
     dag = p.to_dag()
 
@@ -94,9 +95,9 @@ def test_pipeline_to_dag() -> None:
 
 def test_sequence_helper() -> None:
     """Test sequence helper function."""
-    t1 = Task("first")
-    t2 = Task("second")
-    t3 = Task("third")
+    t1 = Action("first")
+    t2 = Action("second")
+    t3 = Action("third")
 
     last = sequence(t1, t2, t3)
 
@@ -107,9 +108,9 @@ def test_sequence_helper() -> None:
 
 def test_parallel_helper() -> None:
     """Test parallel helper function."""
-    t1 = Task("a")
-    t2 = Task("b")
-    t3 = Task("c")
+    t1 = Action("a")
+    t2 = Action("b")
+    t3 = Action("c")
 
     tasks = parallel(t1, t2, t3)
 

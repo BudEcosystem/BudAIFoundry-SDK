@@ -55,7 +55,7 @@ def test_create_execution(
 ) -> None:
     """Test creating/triggering an execution."""
     sample_execution["status"] = "pending"
-    respx.post(f"{base_url}/budpipeline/executions").mock(
+    respx.post(f"{base_url}/budpipeline/pipe-123/execute").mock(
         return_value=Response(201, json=sample_execution)
     )
 
