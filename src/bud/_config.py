@@ -137,7 +137,11 @@ def get_config_dir() -> Path:
 
 
 def save_config(config: dict[str, Any], path: Path | None = None) -> None:
-    """Save configuration to TOML file."""
+    """Save configuration to TOML file.
+
+    Sets restrictive file permissions (0o600) since config may contain
+    sensitive credentials like API keys.
+    """
     import tomli_w
 
     config_path = path or CONFIG_FILE
@@ -145,6 +149,9 @@ def save_config(config: dict[str, Any], path: Path | None = None) -> None:
 
     with open(config_path, "wb") as f:
         tomli_w.dump(config, f)
+
+    # Set restrictive permissions for security (may contain API keys)
+    config_path.chmod(0o600)
 
 
 def get_config_value(key: str) -> Any:
