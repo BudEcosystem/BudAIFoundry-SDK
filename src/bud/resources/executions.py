@@ -58,7 +58,7 @@ class Executions(SyncResource):
 
         if wait:
             execution = self._wait_for_completion(
-                execution.id,
+                execution.effective_id,
                 poll_interval=poll_interval,
                 timeout=timeout,
             )
@@ -311,7 +311,7 @@ class AsyncExecutions(AsyncResource):
 
         if wait:
             execution = await self._wait_for_completion(
-                execution.id,
+                execution.effective_id,
                 poll_interval=poll_interval,
                 timeout=timeout,
             )
