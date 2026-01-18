@@ -6,7 +6,6 @@ import json
 import os
 import sys
 import time
-from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -256,9 +255,7 @@ def status() -> None:
     # Check for API key
     if config.api_key:
         masked = (
-            config.api_key[:8] + "..." + config.api_key[-4:]
-            if len(config.api_key) > 12
-            else "***"
+            config.api_key[:8] + "..." + config.api_key[-4:] if len(config.api_key) > 12 else "***"
         )
 
         console.print("[green]Authenticated[/green] (API Key)")

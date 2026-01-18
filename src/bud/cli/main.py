@@ -82,7 +82,7 @@ def completion(
         console.print(result.stdout)
     else:
         # Fallback message
-        console.print(f"# Add this to your shell config:")
+        console.print("# Add this to your shell config:")
         console.print(f'eval "$(bud --show-completion {shell})"')
 
 

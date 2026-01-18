@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 
@@ -14,7 +12,6 @@ from bud.cli._utils import (
     output_json,
     output_table,
 )
-from bud.models.execution import ExecutionStatus
 
 app = typer.Typer(help="Execution management commands.")
 console = Console()
@@ -23,13 +20,13 @@ console = Console()
 @app.command("list")
 def list_executions(
     ctx: typer.Context,
-    pipeline_id: Optional[str] = typer.Option(
+    pipeline_id: str | None = typer.Option(
         None,
         "--pipeline",
         "-p",
         help="Filter by pipeline ID",
     ),
-    status: Optional[str] = typer.Option(
+    status: str | None = typer.Option(
         None,
         "--status",
         "-s",
@@ -83,7 +80,11 @@ def describe(
             output_json(execution)
         else:
             # Handle status as either Enum or string
-            status_str = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
+            status_str = (
+                execution.status.value
+                if hasattr(execution.status, "value")
+                else str(execution.status)
+            )
             status_upper = status_str.upper()
             status_color = {
                 "COMPLETED": "green",
@@ -118,7 +119,9 @@ def describe(
             if execution.steps:
                 console.print("\n  Steps:")
                 for step in execution.steps:
-                    step_status = step.status.value if hasattr(step.status, "value") else str(step.status)
+                    step_status = (
+                        step.status.value if hasattr(step.status, "value") else str(step.status)
+                    )
                     step_color = {
                         "completed": "green",
                         "failed": "red",
@@ -202,7 +205,7 @@ def progress(
         if get_json_flag(ctx):
             output_json(prog)
         else:
-            console.print(f"[bold]Execution Progress[/bold]")
+            console.print("[bold]Execution Progress[/bold]")
             console.print(f"  Completed: {prog.completed_steps}/{prog.total_steps}")
             console.print(f"  Running: {prog.running_steps}")
             console.print(f"  Pending: {prog.pending_steps}")

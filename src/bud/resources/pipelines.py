@@ -155,13 +155,15 @@ class Pipelines(SyncResource):
 
         steps = []
         for node in nodes:
-            steps.append({
-                "id": node.get("id"),
-                "name": node.get("name", node.get("id")),
-                "action": node.get("action_id", ""),
-                "config": node.get("config", {}),
-                "depends_on": node.get("depends_on", []),
-            })
+            steps.append(
+                {
+                    "id": node.get("id"),
+                    "name": node.get("name", node.get("id")),
+                    "action": node.get("action_id", ""),
+                    "config": node.get("config", {}),
+                    "depends_on": node.get("depends_on", []),
+                }
+            )
 
         return {
             "name": metadata.get("name", "unnamed-pipeline"),
@@ -267,13 +269,15 @@ class AsyncPipelines(AsyncResource):
 
         steps = []
         for node in nodes:
-            steps.append({
-                "id": node.get("id"),
-                "name": node.get("name", node.get("id")),
-                "action": node.get("action_id", ""),
-                "config": node.get("config", {}),
-                "depends_on": node.get("depends_on", []),
-            })
+            steps.append(
+                {
+                    "id": node.get("id"),
+                    "name": node.get("name", node.get("id")),
+                    "action": node.get("action_id", ""),
+                    "config": node.get("config", {}),
+                    "depends_on": node.get("depends_on", []),
+                }
+            )
 
         return {
             "name": metadata.get("name", "unnamed-pipeline"),

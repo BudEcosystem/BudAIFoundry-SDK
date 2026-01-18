@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.live import Live
 from rich.spinner import Spinner
-from rich.table import Table
 
 from bud.cli._utils import get_client, get_json_flag, handle_error, output_json
 from bud.dsl import load_pipeline_file
-from bud.models.execution import ExecutionStatus
 
 app = typer.Typer(help="Run pipelines.")
 console = Console()
@@ -26,13 +23,13 @@ def run_pipeline(
         ...,
         help="Pipeline ID or path to pipeline file",
     ),
-    params: Optional[list[str]] = typer.Option(
+    params: list[str] | None = typer.Option(
         None,
         "--param",
         "-p",
         help="Parameters in key=value format",
     ),
-    env: Optional[str] = typer.Option(
+    env: str | None = typer.Option(
         None,
         "--env",
         "-e",
@@ -43,7 +40,7 @@ def run_pipeline(
         "--wait/--detach",
         help="Wait for completion or detach immediately",
     ),
-    timeout: Optional[int] = typer.Option(
+    timeout: int | None = typer.Option(
         None,
         "--timeout",
         "-t",
@@ -115,15 +112,22 @@ def run_pipeline(
                     execution = client.executions.get(exec_id)
 
                     # Handle status as either Enum or string
-                    status_str = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
+                    status_str = (
+                        execution.status.value
+                        if hasattr(execution.status, "value")
+                        else str(execution.status)
+                    )
                     status_upper = status_str.upper()
 
-                    if status_upper == "COMPLETED":
-                        break
-                    elif status_upper in ("FAILED", "CANCELLED", "TIMED_OUT"):
+                    if status_upper == "COMPLETED" or status_upper in (
+                        "FAILED",
+                        "CANCELLED",
+                        "TIMED_OUT",
+                    ):
                         break
 
                     import time
+
                     time.sleep(2)
         else:
             execution = client.executions.create(
@@ -138,7 +142,11 @@ def run_pipeline(
             output_json(execution)
         else:
             # Handle status as either Enum or string
-            status_str = execution.status.value if hasattr(execution.status, "value") else str(execution.status)
+            status_str = (
+                execution.status.value
+                if hasattr(execution.status, "value")
+                else str(execution.status)
+            )
             status_upper = status_str.upper()
             status_color = {
                 "COMPLETED": "green",

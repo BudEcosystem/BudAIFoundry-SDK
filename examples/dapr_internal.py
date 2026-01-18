@@ -8,7 +8,7 @@ The SDK automatically:
   - Appends /v1.0/invoke/budpipeline/method to the URL
 """
 
-from bud import BudClient, Pipeline, Action
+from bud import Action, BudClient, Pipeline
 
 
 def main():
@@ -37,10 +37,14 @@ def main():
             operation="lowercase",
         )
 
-        step2 = Action("notify", type="log").with_config(
-            message="Processing complete",
-            level="info",
-        ).after(step1)
+        step2 = (
+            Action("notify", type="log")
+            .with_config(
+                message="Processing complete",
+                level="info",
+            )
+            .after(step1)
+        )
 
     pipeline = client.pipelines.create(dag=p.to_dag(), name=p.name)
     print(f"Created pipeline: {pipeline.id}")

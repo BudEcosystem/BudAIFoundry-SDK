@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -29,19 +28,19 @@ def create(
         help="Pipeline definition file (Python)",
         exists=True,
     ),
-    name: Optional[str] = typer.Option(
+    name: str | None = typer.Option(
         None,
         "--name",
         "-n",
         help="Pipeline name (overrides file definition)",
     ),
-    description: Optional[str] = typer.Option(
+    description: str | None = typer.Option(
         None,
         "--description",
         "-d",
         help="Pipeline description",
     ),
-    tags: Optional[list[str]] = typer.Option(
+    tags: list[str] | None = typer.Option(
         None,
         "--tag",
         "-t",
@@ -167,7 +166,9 @@ def describe(
                         deps = node.get("depends_on", [])
                     else:
                         node_id = node.id
-                        node_type = node.type.value if hasattr(node.type, "value") else str(node.type)
+                        node_type = (
+                            node.type.value if hasattr(node.type, "value") else str(node.type)
+                        )
                         deps = node.depends_on if hasattr(node, "depends_on") else []
                     deps_str = ", ".join(deps) if deps else "none"
                     console.print(f"    - {node_id} ({node_type}) -> depends on: {deps_str}")

@@ -3,7 +3,7 @@
 Shows how to create a model lifecycle pipeline with BudClient.
 """
 
-from bud import BudClient, Pipeline, Action
+from bud import Action, BudClient, Pipeline
 
 
 def main():
@@ -24,24 +24,38 @@ def main():
         )
 
         # Add model from HuggingFace
-        add_model = Action("add-model", type="model_add").with_config(
-            model_source="hugging_face",
-            model_uri="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            description="Model added via pipeline",
-        ).with_timeout(3600).after(start)
+        add_model = (
+            Action("add-model", type="model_add")
+            .with_config(
+                model_source="hugging_face",
+                model_uri="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+                description="Model added via pipeline",
+            )
+            .with_timeout(3600)
+            .after(start)
+        )
 
         # Run benchmark
-        benchmark = Action("benchmark", type="model_benchmark").with_config(
-            model_id="${steps.add-model.output.model_id}",
-            benchmark_type="performance",
-        ).with_timeout(7200).after(add_model)
+        benchmark = (
+            Action("benchmark", type="model_benchmark")
+            .with_config(
+                model_id="${steps.add-model.output.model_id}",
+                benchmark_type="performance",
+            )
+            .with_timeout(7200)
+            .after(add_model)
+        )
 
         # Deploy the model
-        deploy = Action("deploy", type="deployment_create").with_config(
-            model_id="${steps.add-model.output.model_id}",
-            name="model-deployment",
-            replicas=1,
-        ).after(benchmark)
+        deploy = (
+            Action("deploy", type="deployment_create")
+            .with_config(
+                model_id="${steps.add-model.output.model_id}",
+                name="model-deployment",
+                replicas=1,
+            )
+            .after(benchmark)
+        )
 
     # Create and execute
     pipeline = client.pipelines.create(

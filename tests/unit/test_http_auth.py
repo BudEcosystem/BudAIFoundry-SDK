@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 import respx
 
 from bud._http import HttpClient
-from bud.auth import APIKeyAuth, DaprAuth, JWTAuth
+from bud.auth import APIKeyAuth, DaprAuth
 
 
 class TestHttpClientAuthIntegration:

@@ -3,7 +3,7 @@
 Shows how to create and run a pipeline programmatically using BudClient.
 """
 
-from bud import BudClient, Pipeline, Action
+from bud import Action, BudClient, Pipeline
 
 
 def main():
@@ -29,15 +29,23 @@ def main():
             level="info",
         )
 
-        transform = Action("transform", type="transform").with_config(
-            input="hello world",
-            operation="uppercase",
-        ).after(start)
+        transform = (
+            Action("transform", type="transform")
+            .with_config(
+                input="hello world",
+                operation="uppercase",
+            )
+            .after(start)
+        )
 
-        output = Action("output", type="set_output").with_config(
-            key="result",
-            value="${steps.transform.output}",
-        ).after(transform)
+        output = (
+            Action("output", type="set_output")
+            .with_config(
+                key="result",
+                value="${steps.transform.output}",
+            )
+            .after(transform)
+        )
 
     # Create pipeline via API
     pipeline = client.pipelines.create(

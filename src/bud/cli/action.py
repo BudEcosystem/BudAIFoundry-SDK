@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -22,7 +20,7 @@ console = Console()
 @app.command("list")
 def list_actions(
     ctx: typer.Context,
-    category: Optional[str] = typer.Option(
+    category: str | None = typer.Option(
         None,
         "--category",
         "-c",
@@ -56,7 +54,9 @@ def list_actions(
                     action.type,
                     action.name,
                     action.category or "-",
-                    (action.description[:50] + "...") if action.description and len(action.description) > 50 else (action.description or "-"),
+                    (action.description[:50] + "...")
+                    if action.description and len(action.description) > 50
+                    else (action.description or "-"),
                 )
 
             console.print(table)

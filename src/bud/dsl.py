@@ -6,9 +6,8 @@ This module provides a fluent interface for building pipeline DAGs.
 from __future__ import annotations
 
 import uuid
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 
 @dataclass
@@ -323,8 +322,7 @@ def load_pipeline_file(path: str) -> Pipeline:
 
     if pipeline is None:
         raise ValueError(
-            f"No pipeline found in {path}. "
-            "Define a variable named 'pipeline' or 'p'."
+            f"No pipeline found in {path}. " "Define a variable named 'pipeline' or 'p'."
         )
 
     if not isinstance(pipeline, Pipeline):

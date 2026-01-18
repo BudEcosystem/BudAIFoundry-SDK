@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from bud.cli.auth import app, load_tokens, save_tokens, clear_tokens
+from bud.cli.auth import app, clear_tokens, load_tokens, save_tokens
 
 runner = CliRunner()
 

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Generator
-from unittest.mock import MagicMock
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import respx
-from httpx import Response
 
 from bud.client import AsyncBudClient, BudClient
 

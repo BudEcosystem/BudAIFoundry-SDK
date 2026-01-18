@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from bud.exceptions import ExecutionError
 from bud.models.execution import (
@@ -207,7 +208,9 @@ class Executions(SyncResource):
             params["step_id"] = step_id
 
         try:
-            data = self._http.get(f"/budpipeline/executions/{execution_id}/events", params=params or None)
+            data = self._http.get(
+                f"/budpipeline/executions/{execution_id}/events", params=params or None
+            )
             items = data.get("items", data) if isinstance(data, dict) else data
             return [ExecutionEvent.model_validate(item) for item in items]
         except Exception:
@@ -390,7 +393,9 @@ class AsyncExecutions(AsyncResource):
         if step_id:
             params["step_id"] = step_id
 
-        data = await self._http.get(f"/budpipeline/executions/{execution_id}/events", params=params or None)
+        data = await self._http.get(
+            f"/budpipeline/executions/{execution_id}/events", params=params or None
+        )
         items = data.get("items", data) if isinstance(data, dict) else data
         return [ExecutionEvent.model_validate(item) for item in items]
 

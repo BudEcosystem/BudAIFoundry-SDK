@@ -71,7 +71,9 @@ def list_config() -> None:
     # Core settings
     console.print("  api_key:", end=" ")
     if config.api_key:
-        masked = config.api_key[:8] + "..." + config.api_key[-4:] if len(config.api_key) > 12 else "***"
+        masked = (
+            config.api_key[:8] + "..." + config.api_key[-4:] if len(config.api_key) > 12 else "***"
+        )
         console.print(masked)
     else:
         console.print("[dim]not set[/dim]")
@@ -106,8 +108,8 @@ def edit() -> None:
         CONFIG_FILE.write_text(
             "# BudAI SDK Configuration\n"
             "# See: https://docs.budecosystem.com/sdk/configuration\n\n"
-            "# api_key = \"your-api-key\"\n"
-            "# api_url = \"https://api.bud.io\"\n"
+            '# api_key = "your-api-key"\n'
+            '# api_url = "https://api.bud.io"\n'
             "# timeout = 60\n"
             "# max_retries = 3\n"
         )
@@ -116,6 +118,6 @@ def edit() -> None:
         subprocess.run([editor, str(CONFIG_FILE)])
     except FileNotFoundError:
         console.print(f"[red]Editor not found: {editor}[/red]")
-        console.print(f"Set EDITOR environment variable or edit manually:")
+        console.print("Set EDITOR environment variable or edit manually:")
         console.print(f"  {CONFIG_FILE}")
         raise typer.Exit(1)

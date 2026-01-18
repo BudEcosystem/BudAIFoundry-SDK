@@ -62,7 +62,9 @@ class NotFoundError(BudError):
     The requested pipeline, execution, or other resource does not exist.
     """
 
-    def __init__(self, message: str, *, resource_type: str = "", resource_id: str = "", response: Any = None) -> None:
+    def __init__(
+        self, message: str, *, resource_type: str = "", resource_id: str = "", response: Any = None
+    ) -> None:
         super().__init__(message, response=response)
         self.resource_type = resource_type
         self.resource_id = resource_id

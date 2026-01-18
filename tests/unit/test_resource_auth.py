@@ -68,9 +68,7 @@ class TestAuthResource:
     @respx.mock
     def test_auth_resource_logout(self) -> None:
         """Auth resource should logout successfully."""
-        respx.post("https://api.example.com/auth/logout").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.post("https://api.example.com/auth/logout").mock(return_value=httpx.Response(204))
 
         # Use authenticated client
         auth = JWTAuth(email="test@example.com", password="secret")

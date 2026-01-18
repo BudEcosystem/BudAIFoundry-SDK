@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 import respx
 from httpx import Response
 
 from bud.client import BudClient
-from bud.models.pipeline import Pipeline
 
 
 @respx.mock
@@ -55,9 +53,7 @@ def test_create_pipeline(
     sample_pipeline: dict[str, Any],
 ) -> None:
     """Test creating a pipeline."""
-    respx.post(f"{base_url}/budpipeline").mock(
-        return_value=Response(201, json=sample_pipeline)
-    )
+    respx.post(f"{base_url}/budpipeline").mock(return_value=Response(201, json=sample_pipeline))
 
     dag = {
         "nodes": [{"id": "n1", "type": "action", "action_id": "test"}],
@@ -74,9 +70,7 @@ def test_delete_pipeline(
     base_url: str,
 ) -> None:
     """Test deleting a pipeline."""
-    respx.delete(f"{base_url}/budpipeline/pipe-123").mock(
-        return_value=Response(204)
-    )
+    respx.delete(f"{base_url}/budpipeline/pipe-123").mock(return_value=Response(204))
 
     # Should not raise
     client.pipelines.delete("pipe-123")
