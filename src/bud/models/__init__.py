@@ -1,6 +1,6 @@
 """Pydantic models for BudAI SDK."""
 
-from bud.models.action import Action, ActionParam
+from bud.models.action import ActionDefinition, ActionParam
 from bud.models.common import PaginatedResponse, Pagination
 from bud.models.event import Event, EventTrigger, EventType
 from bud.models.execution import (
@@ -47,6 +47,6 @@ __all__ = [
     "EventTrigger",
     "EventType",
     # Action
-    "Action",
+    "ActionDefinition",
     "ActionParam",
 ]

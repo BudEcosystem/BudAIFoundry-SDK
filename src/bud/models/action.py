@@ -23,8 +23,12 @@ class ActionParam(BudModel):
     validation: dict[str, Any] | None = None
 
 
-class Action(BudModel):
-    """Action definition."""
+class ActionDefinition(BudModel):
+    """Action definition from API (available action types).
+
+    Not to be confused with bud.dsl.Action which is used for
+    building pipelines.
+    """
 
     type: str
     name: str
