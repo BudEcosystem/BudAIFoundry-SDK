@@ -205,9 +205,15 @@ class HttpClient:
 
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
+            retry_after_int: int | None = None
+            if retry_after:
+                try:
+                    retry_after_int = int(retry_after)
+                except ValueError:
+                    pass  # Invalid Retry-After header, ignore
             raise RateLimitError(
                 message,
-                retry_after=int(retry_after) if retry_after else None,
+                retry_after=retry_after_int,
                 response=response,
             )
 
@@ -367,9 +373,15 @@ class AsyncHttpClient:
 
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
+            retry_after_int: int | None = None
+            if retry_after:
+                try:
+                    retry_after_int = int(retry_after)
+                except ValueError:
+                    pass  # Invalid Retry-After header, ignore
             raise RateLimitError(
                 message,
-                retry_after=int(retry_after) if retry_after else None,
+                retry_after=retry_after_int,
                 response=response,
             )
 
