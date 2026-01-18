@@ -286,11 +286,16 @@ def sequence(*tasks: Action) -> Action:
     """Chain tasks in sequence.
 
     Args:
-        *tasks: Actions to chain
+        *tasks: Actions to chain (must have at least one)
 
     Returns:
         Last task in the sequence
+
+    Raises:
+        ValueError: If no tasks provided
     """
+    if not tasks:
+        raise ValueError("sequence() requires at least one action")
     for i in range(1, len(tasks)):
         tasks[i].after(tasks[i - 1])
     return tasks[-1]
