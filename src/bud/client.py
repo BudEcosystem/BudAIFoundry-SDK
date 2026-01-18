@@ -11,6 +11,7 @@ from typing import Any
 from bud._config import BudConfig
 from bud._http import AsyncHttpClient, HttpClient
 from bud.auth import APIKeyAuth, AuthProvider, DaprAuth, JWTAuth
+from bud.exceptions import AuthenticationError
 from bud.resources.actions import Actions, AsyncActions
 from bud.resources.audit import AsyncAudit, Audit
 from bud.resources.auth import AsyncAuth, Auth
