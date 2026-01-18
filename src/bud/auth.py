@@ -80,7 +80,7 @@ class JWTAuth(AuthProvider):
     """
 
     email: str
-    password: str
+    password: str = field(repr=False)  # Never log passwords
     _access_token: str | None = field(default=None, repr=False)
     _refresh_token: str | None = field(default=None, repr=False)
     _expires_at: float = field(default=0.0, repr=False)
@@ -230,7 +230,7 @@ class DaprAuth(AuthProvider):
         user_id: Optional user ID for scoping requests.
     """
 
-    token: str
+    token: str = field(repr=False)  # Never log tokens
     user_id: str | None = None
 
     def get_headers(self) -> dict[str, str]:
@@ -286,7 +286,7 @@ class APIKeyAuth(AuthProvider):
         api_key: API key for authentication.
     """
 
-    api_key: str
+    api_key: str = field(repr=False)  # Never log API keys
 
     def get_headers(self) -> dict[str, str]:
         """Return API key header.

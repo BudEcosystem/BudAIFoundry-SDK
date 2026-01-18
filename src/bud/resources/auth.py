@@ -26,7 +26,7 @@ class Auth(SyncResource):
 
         # Login to get tokens
         tokens = client.auth.login(email="user@example.com", password="secret")
-        print(f"Access token: {tokens.access_token}")
+        print(f"Logged in, token expires in {tokens.expires_in}s")
 
         # Check current user
         user = client.auth.status()
