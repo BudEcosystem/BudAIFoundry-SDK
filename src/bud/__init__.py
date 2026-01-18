@@ -10,9 +10,11 @@ from bud.dsl import Action, Pipeline
 from bud.exceptions import (
     AuthenticationError,
     BudError,
+    ConnectionError,
     ExecutionError,
     NotFoundError,
     RateLimitError,
+    TimeoutError,
     ValidationError,
 )
 
@@ -32,4 +34,6 @@ __all__ = [
     "ValidationError",
     "NotFoundError",
     "ExecutionError",
+    "ConnectionError",
+    "TimeoutError",
 ]
