@@ -13,13 +13,7 @@ Official Python SDK for the BudAI Foundry Platform. Build, manage, and execute D
 ## Installation
 
 ```bash
-pip install bud-sdk
-```
-
-Or with [uv](https://docs.astral.sh/uv/):
-
-```bash
-uv add bud-sdk
+pip install git+https://github.com/BudEcosystem/BudAIFoundry-SDK
 ```
 
 ## Quick Start
