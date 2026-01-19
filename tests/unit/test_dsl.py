@@ -119,3 +119,20 @@ def test_parallel_helper() -> None:
     assert len(t1._depends_on) == 0
     assert len(t2._depends_on) == 0
     assert len(t3._depends_on) == 0
+
+
+def test_sequence_empty_raises_error() -> None:
+    """Test that sequence() with no args raises ValueError."""
+    import pytest
+
+    with pytest.raises(ValueError, match="requires at least one action"):
+        sequence()
+
+
+def test_sequence_single_action() -> None:
+    """Test sequence with a single action returns that action."""
+    t1 = Action("only")
+    result = sequence(t1)
+
+    assert result == t1
+    assert len(t1._depends_on) == 0

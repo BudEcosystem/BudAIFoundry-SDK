@@ -93,6 +93,10 @@ def run_pipeline(
 
         # Create execution
         if wait:
+            import time as time_module
+
+            start_time = time_module.time()
+
             with Live(
                 Spinner("dots", text="Starting execution..."),
                 console=console,
@@ -126,9 +130,12 @@ def run_pipeline(
                     ):
                         break
 
-                    import time
+                    # Check timeout
+                    if timeout and (time_module.time() - start_time) > timeout:
+                        console.print(f"[yellow]Timeout after {timeout}s[/yellow]")
+                        break
 
-                    time.sleep(2)
+                    time_module.sleep(2)
         else:
             execution = client.executions.create(
                 pipeline_id,

@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from bud import BudClient, Pipeline, Task
+from bud import Action, BudClient, Pipeline
 
 # Skip all tests in this module if no API key
 pytestmark = pytest.mark.skipif(
@@ -36,7 +36,7 @@ class TestLivePipelines:
         """Test full pipeline lifecycle."""
         # Create
         with Pipeline("sdk-test-pipeline") as p:
-            Task("step1", action="bud.noop")
+            Action("step1", type="bud.noop")
 
         pipeline = live_client.pipelines.create(
             p.to_dag(),
