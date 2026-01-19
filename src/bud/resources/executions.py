@@ -26,6 +26,9 @@ class Executions(SyncResource):
         *,
         params: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
+        callback_topics: list[str] | None = None,
+        user_id: str | None = None,
+        initiator: str | None = None,
         wait: bool = False,
         poll_interval: float = 2.0,
         timeout: float | None = None,
@@ -36,6 +39,9 @@ class Executions(SyncResource):
             pipeline_id: Pipeline ID to execute
             params: Execution parameters
             context: Execution context
+            callback_topics: Dapr pub/sub topics for progress events
+            user_id: User ID for tracking
+            initiator: Initiator identifier (default: "api")
             wait: Wait for execution to complete
             poll_interval: Polling interval in seconds (when wait=True)
             timeout: Maximum wait time in seconds
@@ -46,13 +52,35 @@ class Executions(SyncResource):
         Raises:
             ExecutionError: If execution fails (when wait=True)
             TimeoutError: If timeout exceeded (when wait=True)
+
+        Example:
+            ```python
+            # Simple execution
+            execution = client.executions.create("pipeline-id", params={"key": "value"})
+
+            # With Dapr callback for progress events
+            execution = client.executions.create(
+                "pipeline-id",
+                params={"input": "data"},
+                callback_topics=["my-progress-topic"],
+                initiator="my-service",
+            )
+            ```
         """
+        body: dict[str, Any] = {
+            "params": params or {},
+            "context": context or {},
+        }
+        if callback_topics:
+            body["callback_topics"] = callback_topics
+        if user_id:
+            body["user_id"] = user_id
+        if initiator:
+            body["initiator"] = initiator
+
         data = self._http.post(
             f"/budpipeline/{pipeline_id}/execute",
-            json={
-                "params": params or {},
-                "context": context or {},
-            },
+            json=body,
         )
         execution = Execution.model_validate(data)
 
@@ -70,6 +98,9 @@ class Executions(SyncResource):
         pipeline_id: str,
         *,
         params: dict[str, Any] | None = None,
+        callback_topics: list[str] | None = None,
+        user_id: str | None = None,
+        initiator: str | None = None,
         wait: bool = True,
         timeout: float | None = None,
     ) -> Execution:
@@ -78,6 +109,9 @@ class Executions(SyncResource):
         Args:
             pipeline_id: Pipeline ID to execute
             params: Execution parameters
+            callback_topics: Dapr pub/sub topics for progress events
+            user_id: User ID for tracking
+            initiator: Initiator identifier
             wait: Wait for completion (default True)
             timeout: Maximum wait time
 
@@ -87,6 +121,9 @@ class Executions(SyncResource):
         return self.create(
             pipeline_id,
             params=params,
+            callback_topics=callback_topics,
+            user_id=user_id,
+            initiator=initiator,
             wait=wait,
             timeout=timeout,
         )
@@ -295,17 +332,40 @@ class AsyncExecutions(AsyncResource):
         *,
         params: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
+        callback_topics: list[str] | None = None,
+        user_id: str | None = None,
+        initiator: str | None = None,
         wait: bool = False,
         poll_interval: float = 2.0,
         timeout: float | None = None,
     ) -> Execution:
-        """Create/trigger a pipeline execution."""
+        """Create/trigger a pipeline execution.
+
+        Args:
+            pipeline_id: Pipeline ID to execute
+            params: Execution parameters
+            context: Execution context
+            callback_topics: Dapr pub/sub topics for progress events
+            user_id: User ID for tracking
+            initiator: Initiator identifier (default: "api")
+            wait: Wait for execution to complete
+            poll_interval: Polling interval in seconds (when wait=True)
+            timeout: Maximum wait time in seconds
+        """
+        body: dict[str, Any] = {
+            "params": params or {},
+            "context": context or {},
+        }
+        if callback_topics:
+            body["callback_topics"] = callback_topics
+        if user_id:
+            body["user_id"] = user_id
+        if initiator:
+            body["initiator"] = initiator
+
         data = await self._http.post(
             f"/budpipeline/{pipeline_id}/execute",
-            json={
-                "params": params or {},
-                "context": context or {},
-            },
+            json=body,
         )
         execution = Execution.model_validate(data)
 
@@ -323,13 +383,29 @@ class AsyncExecutions(AsyncResource):
         pipeline_id: str,
         *,
         params: dict[str, Any] | None = None,
+        callback_topics: list[str] | None = None,
+        user_id: str | None = None,
+        initiator: str | None = None,
         wait: bool = True,
         timeout: float | None = None,
     ) -> Execution:
-        """Convenience method to run a pipeline and wait for completion."""
+        """Convenience method to run a pipeline and wait for completion.
+
+        Args:
+            pipeline_id: Pipeline ID to execute
+            params: Execution parameters
+            callback_topics: Dapr pub/sub topics for progress events
+            user_id: User ID for tracking
+            initiator: Initiator identifier
+            wait: Wait for completion (default True)
+            timeout: Maximum wait time
+        """
         return await self.create(
             pipeline_id,
             params=params,
+            callback_topics=callback_topics,
+            user_id=user_id,
+            initiator=initiator,
             wait=wait,
             timeout=timeout,
         )

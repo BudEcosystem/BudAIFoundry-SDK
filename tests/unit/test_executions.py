@@ -65,6 +65,37 @@ def test_create_execution(
 
 
 @respx.mock
+def test_create_execution_with_callback_topics(
+    client: BudClient,
+    base_url: str,
+    sample_execution: dict[str, Any],
+) -> None:
+    """Test creating execution with callback topics for Dapr pub/sub."""
+    sample_execution["status"] = "pending"
+    route = respx.post(f"{base_url}/budpipeline/pipe-123/execute").mock(
+        return_value=Response(201, json=sample_execution)
+    )
+
+    execution = client.executions.create(
+        "pipe-123",
+        params={"key": "value"},
+        callback_topics=["progress-topic", "completion-topic"],
+        user_id="user-123",
+        initiator="my-service",
+    )
+
+    assert execution.pipeline_id == "pipe-123"
+    # Verify the request body contained the new fields
+    request_body = route.calls[0].request.content
+    import json
+
+    body = json.loads(request_body)
+    assert body["callback_topics"] == ["progress-topic", "completion-topic"]
+    assert body["user_id"] == "user-123"
+    assert body["initiator"] == "my-service"
+
+
+@respx.mock
 def test_cancel_execution(
     client: BudClient,
     base_url: str,

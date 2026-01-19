@@ -188,10 +188,25 @@ client.pipelines.delete("pipeline-id")
 ### Executions
 
 ```python
-# Run a pipeline
+# Run a pipeline (simple)
 execution = client.executions.create(
     "pipeline-id",
     params={"key": "value"},
+)
+
+# Run with convenience method (waits for completion by default)
+execution = client.executions.run(
+    "pipeline-id",
+    params={"input": "data"},
+)
+
+# Run with Dapr callback topics for progress events
+execution = client.executions.create(
+    "pipeline-id",
+    params={"input_data": "value", "model_id": "model-123"},
+    callback_topics=["my-progress-topic"],  # Dapr pub/sub topics
+    user_id="user-123",                      # User ID for tracking
+    initiator="my-service",                  # Service identifier
 )
 
 # Get execution status
@@ -203,6 +218,29 @@ client.executions.cancel(execution.effective_id)
 
 # List executions
 executions = client.executions.list(status="running")
+```
+
+#### Dapr Callback Topics
+
+When running inside the Bud platform with Dapr, you can receive progress events via pub/sub:
+
+```python
+from bud import BudClient
+
+# Internal service with Dapr sidecar
+client = BudClient(dapr_token="your-dapr-token")
+
+# Execute with callback - progress events published to your topic
+execution = client.executions.run(
+    "pipeline-id",
+    params={"data": "input"},
+    callback_topics=["my-service-progress"],
+    initiator="my-service",
+    wait=False,  # Don't block, receive updates via pub/sub
+)
+
+print(f"Execution started: {execution.effective_id}")
+# Progress events will be published to "my-service-progress" topic
 ```
 
 ### Actions
