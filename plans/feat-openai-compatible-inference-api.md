@@ -321,7 +321,7 @@ Current limitation: `AsyncBudClient` only supports API key authentication (line 
 ### Quality Gates
 
 - [x] All existing tests continue to pass
-- [x] New tests achieve >90% coverage of new code (82% for inference.py)
+- [x] New tests achieve >90% coverage of new code (96% for inference.py, 100% for models, 82% for streaming)
 - [ ] Code review approval
 
 ---

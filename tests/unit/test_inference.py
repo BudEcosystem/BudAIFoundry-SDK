@@ -394,3 +394,58 @@ def test_model_with_extra_fields() -> None:
     assert model.id == "gpt-4"
     # Extra field should be accessible
     assert hasattr(model, "future_field") or "future_field" in model.model_extra
+
+
+# Streaming Tests
+
+
+@respx.mock
+def test_create_chat_completion_streaming(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test creating a chat completion with streaming."""
+    sse_data = (
+        'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+        'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n'
+        'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"gpt-4","choices":[{"index":0,"delta":{"content":" there"},"finish_reason":null}]}\n\n'
+        'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+
+    respx.post(f"{base_url}/v1/chat/completions").mock(
+        return_value=Response(
+            200,
+            content=sse_data.encode(),
+            headers={"Content-Type": "text/event-stream"},
+        )
+    )
+
+    stream = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Hello!"}],
+        stream=True,
+    )
+
+    chunks = list(stream)
+    assert len(chunks) == 4
+    assert isinstance(chunks[0], ChatCompletionChunk)
+    assert chunks[0].choices[0].delta.role == "assistant"
+    assert chunks[1].choices[0].delta.content == "Hello"
+    assert chunks[2].choices[0].delta.content == " there"
+    assert chunks[3].choices[0].finish_reason == "stop"
+
+
+# Validation Tests
+
+
+def test_chat_completion_message_limit(client: BudClient) -> None:
+    """Test that message count is validated."""
+    # Create more than 1000 messages
+    messages = [{"role": "user", "content": f"Message {i}"} for i in range(1001)]
+
+    with pytest.raises(ValueError, match="exceeds maximum of 1000 messages"):
+        client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+        )

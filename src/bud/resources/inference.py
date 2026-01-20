@@ -113,6 +113,11 @@ class ChatCompletions(SyncResource):
                 if chunk.choices[0].delta.content:
                     print(chunk.choices[0].delta.content, end="")
         """
+        # Validate message count to prevent DoS
+        max_messages = 1000
+        if len(messages) > max_messages:
+            raise ValueError(f"messages list exceeds maximum of {max_messages} messages")
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
