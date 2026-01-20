@@ -59,7 +59,7 @@ class TestHttpClientAutoRefresh:
         # Second call (after refresh) returns success
         call_count = {"value": 0}
 
-        def data_response(request: httpx.Request) -> httpx.Response:
+        def data_response(_request: httpx.Request) -> httpx.Response:
             call_count["value"] += 1
             if call_count["value"] == 1:
                 return httpx.Response(401, json={"error": "Unauthorized"})
@@ -100,7 +100,7 @@ class TestHttpClientAutoRefresh:
         """HttpClient should refresh token and retry on 401."""
         call_count = {"value": 0}
 
-        def data_response(request: httpx.Request) -> httpx.Response:
+        def data_response(_request: httpx.Request) -> httpx.Response:
             call_count["value"] += 1
             if call_count["value"] == 1:
                 return httpx.Response(401, json={"error": "Token expired"})

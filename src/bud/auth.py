@@ -8,6 +8,7 @@ Supports multiple authentication methods:
 
 from __future__ import annotations
 
+import contextlib
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -200,13 +201,11 @@ class JWTAuth(AuthProvider):
             client: HTTP client to use for logout request.
         """
         if self._access_token:
-            try:
+            with contextlib.suppress(Exception):
                 client.post(
                     "/auth/logout",
                     headers=self.get_headers(),
                 )
-            except Exception:
-                pass  # Best effort logout
 
         self._access_token = None
         self._refresh_token = None

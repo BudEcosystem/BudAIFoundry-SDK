@@ -137,7 +137,7 @@ def _login_with_token(token: str, base_url: str) -> None:
         client.close()
     except Exception as e:
         console.print(f"[red]Authentication failed:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     # Save to config
     _save_auth_config(api_key=token, base_url=base_url)
@@ -181,10 +181,10 @@ def _login_with_jwt(email: str, password: str, base_url: str) -> None:
 
     except httpx.HTTPStatusError as e:
         console.print(f"[red]Authentication failed:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except Exception as e:
         console.print(f"[red]Connection error:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 def _save_auth_config(
@@ -352,4 +352,4 @@ def refresh() -> None:
     except httpx.HTTPStatusError:
         console.print("[red]Failed to refresh tokens.[/red]")
         console.print("Please login again with: bud auth login")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None

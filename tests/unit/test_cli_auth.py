@@ -21,16 +21,18 @@ class TestCLIAuthTokenFunctions:
         """Token save and load should work correctly."""
         tokens_file = tmp_path / "tokens.json"
 
-        with patch("bud.cli.auth.TOKENS_FILE", tokens_file):
-            with patch("bud.cli.auth.get_config_dir", return_value=tmp_path):
-                save_tokens("access-123", "refresh-456", 3600)
+        with (
+            patch("bud.cli.auth.TOKENS_FILE", tokens_file),
+            patch("bud.cli.auth.get_config_dir", return_value=tmp_path),
+        ):
+            save_tokens("access-123", "refresh-456", 3600)
 
-                tokens = load_tokens()
+            tokens = load_tokens()
 
-                assert tokens is not None
-                assert tokens["access_token"] == "access-123"
-                assert tokens["refresh_token"] == "refresh-456"
-                assert "expires_at" in tokens
+            assert tokens is not None
+            assert tokens["access_token"] == "access-123"
+            assert tokens["refresh_token"] == "refresh-456"
+            assert "expires_at" in tokens
 
     def test_clear_tokens(self, tmp_path: Path) -> None:
         """Clear tokens should empty the tokens file."""

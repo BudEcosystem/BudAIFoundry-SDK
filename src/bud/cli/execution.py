@@ -149,9 +149,8 @@ def cancel(
     try:
         client = get_client()
 
-        if not force:
-            if not typer.confirm(f"Cancel execution {execution_id}?"):
-                raise typer.Abort()
+        if not force and not typer.confirm(f"Cancel execution {execution_id}?"):
+            raise typer.Abort()
 
         execution = client.executions.cancel(execution_id)
         console.print(f"[yellow]Cancelled execution:[/yellow] {execution.id}")

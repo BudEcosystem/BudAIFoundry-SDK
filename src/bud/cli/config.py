@@ -120,4 +120,4 @@ def edit() -> None:
         console.print(f"[red]Editor not found: {editor}[/red]")
         console.print("Set EDITOR environment variable or edit manually:")
         console.print(f"  {CONFIG_FILE}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None

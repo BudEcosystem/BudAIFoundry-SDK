@@ -158,10 +158,7 @@ class Executions(SyncResource):
 
         data = self._http.get("/budpipeline/executions", params=params)
         # API returns 'executions' key, fall back to 'items' for compatibility
-        if isinstance(data, dict):
-            items = data.get("executions", data.get("items", data))
-        else:
-            items = data
+        items = data.get("executions", data.get("items", data)) if isinstance(data, dict) else data
         return [Execution.model_validate(item) for item in items]
 
     def get(self, execution_id: str) -> Execution:

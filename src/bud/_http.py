@@ -10,6 +10,7 @@ Handles:
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -261,10 +262,8 @@ class HttpClient:
             retry_after = response.headers.get("Retry-After")
             retry_after_int: int | None = None
             if retry_after:
-                try:
+                with contextlib.suppress(ValueError):
                     retry_after_int = int(retry_after)
-                except ValueError:
-                    pass  # Invalid Retry-After header, ignore
             raise RateLimitError(
                 message,
                 retry_after=retry_after_int,
@@ -429,10 +428,8 @@ class AsyncHttpClient:
             retry_after = response.headers.get("Retry-After")
             retry_after_int: int | None = None
             if retry_after:
-                try:
+                with contextlib.suppress(ValueError):
                     retry_after_int = int(retry_after)
-                except ValueError:
-                    pass  # Invalid Retry-After header, ignore
             raise RateLimitError(
                 message,
                 retry_after=retry_after_int,

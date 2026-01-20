@@ -47,7 +47,7 @@ def get_client() -> BudClient:
         error_console.print(f"[red]Authentication error:[/red] {e}")
         error_console.print("\nTo authenticate, run:")
         error_console.print("  bud auth login")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 def output_json(data: Any) -> None:

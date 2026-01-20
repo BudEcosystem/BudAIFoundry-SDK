@@ -85,7 +85,6 @@ class TestJWTAuthFlow:
             assert auth._refresh_token is not None
 
             # Force refresh
-            original_token = auth._access_token
             auth.refresh(client, jwt_credentials["base_url"])
 
             # Token should be different after refresh

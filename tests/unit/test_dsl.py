@@ -72,7 +72,7 @@ def test_pipeline_context_manager() -> None:
     """Test pipeline context manager auto-adds actions."""
     with Pipeline("test") as p:
         build = Action("build")
-        test = Action("test").after(build)
+        Action("test").after(build)
 
     assert len(p._tasks) == 2
     assert "build" in p.actions
@@ -84,7 +84,7 @@ def test_pipeline_to_dag() -> None:
     with Pipeline("deploy") as p:
         build = Action("build", type="docker_build")
         test = Action("test", type="pytest").after(build)
-        deploy = Action("deploy", type="k8s_apply").after(test)
+        Action("deploy", type="k8s_apply").after(test)
 
     dag = p.to_dag()
 
