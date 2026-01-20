@@ -19,6 +19,7 @@ from bud.resources.benchmarks import AsyncBenchmarks, Benchmarks
 from bud.resources.clusters import AsyncClusters, Clusters
 from bud.resources.events import AsyncEvents, Events
 from bud.resources.executions import AsyncExecutions, Executions
+from bud.resources.inference import Chat, Embeddings, InferenceModels
 from bud.resources.pipelines import AsyncPipelines, Pipelines
 from bud.resources.schedules import AsyncSchedules, Schedules
 from bud.resources.webhooks import AsyncWebhooks, Webhooks
@@ -154,6 +155,11 @@ class BudClient:
         self.benchmarks = Benchmarks(self._http)
         self.clusters = Clusters(self._http)
         self.audit = Audit(self._http)
+
+        # OpenAI-compatible inference resources
+        self.chat = Chat(self._http)
+        self.embeddings = Embeddings(self._http)
+        self.models = InferenceModels(self._http)
 
     def _resolve_auth(
         self,
