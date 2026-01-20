@@ -10,6 +10,20 @@ from bud.models.execution import (
     ExecutionStep,
     StepStatus,
 )
+from bud.models.inference import (
+    ChatCompletion,
+    ChatCompletionChoice,
+    ChatCompletionChunk,
+    ChatCompletionChunkChoice,
+    ChatCompletionDelta,
+    ChatMessage,
+    EmbeddingData,
+    EmbeddingResponse,
+    EmbeddingUsage,
+    Model,
+    ModelList,
+    Usage,
+)
 from bud.models.pipeline import (
     DAGNode,
     DAGNodeType,
@@ -49,4 +63,17 @@ __all__ = [
     # Action
     "ActionDefinition",
     "ActionParam",
+    # Inference
+    "ChatMessage",
+    "ChatCompletion",
+    "ChatCompletionChoice",
+    "ChatCompletionChunk",
+    "ChatCompletionChunkChoice",
+    "ChatCompletionDelta",
+    "Usage",
+    "EmbeddingData",
+    "EmbeddingResponse",
+    "EmbeddingUsage",
+    "Model",
+    "ModelList",
 ]

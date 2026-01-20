@@ -7,6 +7,7 @@ from bud.resources.benchmarks import AsyncBenchmarks, Benchmarks
 from bud.resources.clusters import AsyncClusters, Clusters
 from bud.resources.events import AsyncEvents, Events
 from bud.resources.executions import AsyncExecutions, Executions
+from bud.resources.inference import Chat, ChatCompletions, Embeddings, InferenceModels
 from bud.resources.pipelines import AsyncPipelines, Pipelines
 from bud.resources.schedules import AsyncSchedules, Schedules
 from bud.resources.webhooks import AsyncWebhooks, Webhooks
@@ -34,4 +35,9 @@ __all__ = [
     "AsyncBenchmarks",
     "Clusters",
     "AsyncClusters",
+    # Inference resources
+    "Chat",
+    "ChatCompletions",
+    "Embeddings",
+    "InferenceModels",
 ]

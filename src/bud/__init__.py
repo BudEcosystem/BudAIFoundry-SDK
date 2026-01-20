@@ -11,7 +11,11 @@ from bud.exceptions import (
     AuthenticationError,
     BudError,
     ConnectionError,
+    ContentFilterError,
+    ContextLengthError,
     ExecutionError,
+    InferenceError,
+    ModelNotFoundError,
     NotFoundError,
     RateLimitError,
     TimeoutError,
@@ -36,4 +40,9 @@ __all__ = [
     "ExecutionError",
     "ConnectionError",
     "TimeoutError",
+    # Inference Exceptions
+    "InferenceError",
+    "ContentFilterError",
+    "ContextLengthError",
+    "ModelNotFoundError",
 ]

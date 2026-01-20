@@ -11,6 +11,8 @@ Handles:
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import httpx
@@ -90,6 +92,58 @@ class HttpClient:
     def delete(self, path: str) -> Any:
         """Perform DELETE request."""
         return self._request("DELETE", path)
+
+    @contextmanager
+    def stream(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+    ) -> Iterator[httpx.Response]:
+        """Stream HTTP response for SSE endpoints.
+
+        Args:
+            method: HTTP method (typically POST).
+            path: API path.
+            json: Request body as JSON.
+
+        Yields:
+            httpx.Response object for streaming iteration.
+
+        Example:
+            with client.stream("POST", "/v1/chat/completions", json=payload) as response:
+                for line in response.iter_lines():
+                    print(line)
+        """
+        # Ensure auth is valid before request
+        self._ensure_auth()
+        auth_headers = self._get_auth_headers()
+
+        # Use extended timeouts for streaming LLM inference
+        stream_timeout = httpx.Timeout(
+            connect=10.0,  # Connection establishment
+            read=600.0,  # 10 minutes for long completions
+            write=30.0,  # Request body upload
+            pool=5.0,  # Pool acquisition
+        )
+
+        with self._client.stream(
+            method,
+            path,
+            json=json,
+            headers={
+                **auth_headers,
+                "Accept": "text/event-stream",
+            },
+            timeout=stream_timeout,
+        ) as response:
+            # Check for errors before yielding
+            if not response.is_success:
+                # Read the response to get error details
+                response.read()
+                self._handle_response(response)
+            yield response
 
     def _get_auth_headers(self) -> dict[str, str]:
         """Get authentication headers from auth provider."""

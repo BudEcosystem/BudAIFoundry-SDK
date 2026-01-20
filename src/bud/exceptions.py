@@ -101,3 +101,28 @@ class TimeoutError(BudError):
 
     Consider increasing the timeout or using async client.
     """
+
+
+class InferenceError(BudError):
+    """Base exception for inference-related errors."""
+
+
+class ContentFilterError(InferenceError):
+    """Content was filtered due to policy violation.
+
+    The request or response was blocked by content filtering.
+    """
+
+
+class ContextLengthError(InferenceError):
+    """Input exceeds maximum context length.
+
+    Reduce the message history or use a model with larger context.
+    """
+
+
+class ModelNotFoundError(InferenceError):
+    """Requested model is not available.
+
+    Check available models with client.models.list().
+    """
