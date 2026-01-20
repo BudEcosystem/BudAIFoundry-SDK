@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Example script demonstrating the OpenAI-compatible inference API."""
 
+import os
+
 from bud import BudClient
 
-# Configuration
-BASE_URL = "https://gateway.dev.bud.studio"
-API_KEY = "bud_admin_9TTUfZBF7uXGHOXVl9q-gvJCaxOtZa55Ke3Xv710c_o"
+# Configuration - set these environment variables before running
+BASE_URL = os.environ.get("BUD_BASE_URL", "https://gateway.bud.studio")
+API_KEY = os.environ.get("BUD_API_KEY", "")
 
 
 def example_chat_completion():
@@ -163,6 +165,11 @@ def example_list_models():
 
 if __name__ == "__main__":
     print("\n🚀 Bud SDK Inference API Examples\n")
+
+    if not API_KEY:
+        print("Error: BUD_API_KEY environment variable is not set.")
+        print("Usage: BUD_API_KEY=your-key python examples/inference_example.py")
+        exit(1)
 
     # Run examples
     try:
