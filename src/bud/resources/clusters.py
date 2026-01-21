@@ -112,7 +112,7 @@ class Clusters(SyncResource):
         Returns:
             Updated cluster.
         """
-        payload = {}
+        payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if node_count is not None:
@@ -201,7 +201,7 @@ class AsyncClusters:
         config: dict[str, Any] | None = None,
     ) -> Cluster:
         """Update a cluster."""
-        payload = {}
+        payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if node_count is not None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 from bud.models.event import Event, EventTrigger, EventType
@@ -18,7 +19,7 @@ class Events(SyncResource):
         source: str | None = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> list[Event]:
+    ) -> builtins.list[Event]:
         """List events.
 
         Args:
@@ -95,7 +96,7 @@ class Events(SyncResource):
         pipeline_id: str | None = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> list[EventTrigger]:
+    ) -> builtins.list[EventTrigger]:
         """List event triggers.
 
         Args:
@@ -148,7 +149,7 @@ class AsyncEvents(AsyncResource):
         source: str | None = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> list[Event]:
+    ) -> builtins.list[Event]:
         """List events."""
         params: dict[str, Any] = {
             "page": page,
@@ -196,7 +197,7 @@ class AsyncEvents(AsyncResource):
         pipeline_id: str | None = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> list[EventTrigger]:
+    ) -> builtins.list[EventTrigger]:
         """List event triggers."""
         params: dict[str, Any] = {
             "page": page,

@@ -33,7 +33,7 @@ def get_client() -> BudClient:
             config = BudConfig.load()
             # Create JWTAuth with stored tokens
             auth = JWTAuth(
-                email=config.auth.email if config.auth else "",
+                email=(config.auth.email if config.auth else None) or "",
                 password="",  # Not needed when tokens are available
             )
             auth._access_token = tokens["access_token"]

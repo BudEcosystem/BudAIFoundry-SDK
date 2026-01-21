@@ -110,7 +110,7 @@ class Pipelines(SyncResource):
         Returns:
             Updated pipeline
         """
-        update_data = {}
+        update_data: dict[str, Any] = {}
         if name is not None:
             update_data["name"] = name
         if description is not None:
@@ -236,7 +236,7 @@ class AsyncPipelines(AsyncResource):
         tags: dict[str, str] | None = None,
     ) -> Pipeline:
         """Update a pipeline."""
-        update_data = {}
+        update_data: dict[str, Any] = {}
         if name is not None:
             update_data["name"] = name
         if description is not None:

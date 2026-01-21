@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from bud.models.benchmark import Benchmark, BenchmarkFilters, BenchmarkList
@@ -62,7 +63,7 @@ class Benchmarks(SyncResource):
         Returns:
             BenchmarkList with items and pagination info.
         """
-        params = {}
+        params: dict[str, Any] = {}
         if status:
             params["status"] = status
         if limit is not None:
@@ -132,7 +133,7 @@ class Benchmarks(SyncResource):
     def analyze(
         self,
         analysis_type: str,
-        benchmark_ids: list[str],
+        benchmark_ids: builtins.list[str],
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Analyze benchmark data.
@@ -172,7 +173,7 @@ class AsyncBenchmarks:
         offset: int | None = None,
     ) -> BenchmarkList:
         """List benchmark results."""
-        params = {}
+        params: dict[str, Any] = {}
         if status:
             params["status"] = status
         if limit is not None:
@@ -216,7 +217,7 @@ class AsyncBenchmarks:
     async def analyze(
         self,
         analysis_type: str,
-        benchmark_ids: list[str],
+        benchmark_ids: builtins.list[str],
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Analyze benchmark data."""

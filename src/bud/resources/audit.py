@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from bud.models.audit import AuditList, AuditRecord
@@ -65,7 +66,7 @@ class Audit(SyncResource):
         Returns:
             AuditList with items and pagination.
         """
-        params = {}
+        params: dict[str, Any] = {}
         if user_id:
             params["user_id"] = user_id
         if action:
@@ -128,7 +129,7 @@ class Audit(SyncResource):
         """
         return self._http.get(f"/audit/records/{record_id}/verify")
 
-    def verify_batch(self, record_ids: list[str]) -> dict[str, Any]:
+    def verify_batch(self, record_ids: builtins.list[str]) -> dict[str, Any]:
         """Verify integrity of multiple audit records.
 
         Args:
@@ -170,7 +171,7 @@ class AsyncAudit:
         offset: int | None = None,
     ) -> AuditList:
         """List audit records."""
-        params = {}
+        params: dict[str, Any] = {}
         if user_id:
             params["user_id"] = user_id
         if action:
@@ -211,7 +212,7 @@ class AsyncAudit:
         """Verify integrity of an audit record."""
         return await self._http.get(f"/audit/records/{record_id}/verify")
 
-    async def verify_batch(self, record_ids: list[str]) -> dict[str, Any]:
+    async def verify_batch(self, record_ids: builtins.list[str]) -> dict[str, Any]:
         """Verify integrity of multiple audit records."""
         return await self._http.post("/audit/verify-batch", json={"ids": record_ids})
 

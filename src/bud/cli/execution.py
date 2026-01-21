@@ -177,7 +177,7 @@ def retry(
         client = get_client()
         execution = client.executions.retry(execution_id)
 
-        if wait:
+        if wait and execution.id:
             console.print(f"[dim]Retrying execution... ({execution.id})[/dim]")
             execution = client.executions.get(execution.id)
             # Wait loop would go here

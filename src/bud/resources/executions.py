@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -135,7 +136,7 @@ class Executions(SyncResource):
         status: ExecutionStatus | str | None = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> list[Execution]:
+    ) -> builtins.list[Execution]:
         """List executions.
 
         Args:
@@ -158,7 +159,10 @@ class Executions(SyncResource):
 
         data = self._http.get("/budpipeline/executions", params=params)
         # API returns 'executions' key, fall back to 'items' for compatibility
-        items = data.get("executions", data.get("items", data)) if isinstance(data, dict) else data
+        if isinstance(data, dict):
+            items = data.get("executions") or data.get("items") or []
+        else:
+            items = data if data else []
         return [Execution.model_validate(item) for item in items]
 
     def get(self, execution_id: str) -> Execution:
@@ -209,7 +213,7 @@ class Executions(SyncResource):
         data = self._http.get(f"/budpipeline/executions/{execution_id}/progress")
         return ExecutionProgress.model_validate(data)
 
-    def get_steps(self, execution_id: str) -> list[ExecutionStep]:
+    def get_steps(self, execution_id: str) -> builtins.list[ExecutionStep]:
         """Get execution steps.
 
         Args:
@@ -227,7 +231,7 @@ class Executions(SyncResource):
         execution_id: str,
         *,
         step_id: str | None = None,
-    ) -> list[ExecutionEvent]:
+    ) -> builtins.list[ExecutionEvent]:
         """Get execution events.
 
         Args:
@@ -308,10 +312,11 @@ class Executions(SyncResource):
                 ExecutionStatus.CANCELLED,
                 ExecutionStatus.TIMED_OUT,
             ):
+                status_str = execution.status.value if isinstance(execution.status, ExecutionStatus) else execution.status
                 raise ExecutionError(
-                    f"Execution {execution.status.value}: {execution.error or 'Unknown error'}",
+                    f"Execution {status_str}: {execution.error or 'Unknown error'}",
                     execution_id=execution_id,
-                    status=execution.status.value,
+                    status=status_str,
                 )
 
             if timeout and (time.time() - start_time) > timeout:
@@ -414,7 +419,7 @@ class AsyncExecutions(AsyncResource):
         status: ExecutionStatus | str | None = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> list[Execution]:
+    ) -> builtins.list[Execution]:
         """List executions."""
         params: dict[str, Any] = {
             "page": page,
@@ -449,7 +454,7 @@ class AsyncExecutions(AsyncResource):
         data = await self._http.get(f"/budpipeline/executions/{execution_id}/progress")
         return ExecutionProgress.model_validate(data)
 
-    async def get_steps(self, execution_id: str) -> list[ExecutionStep]:
+    async def get_steps(self, execution_id: str) -> builtins.list[ExecutionStep]:
         """Get execution steps."""
         data = await self._http.get(f"/budpipeline/executions/{execution_id}/steps")
         items = data.get("items", data) if isinstance(data, dict) else data
@@ -460,7 +465,7 @@ class AsyncExecutions(AsyncResource):
         execution_id: str,
         *,
         step_id: str | None = None,
-    ) -> list[ExecutionEvent]:
+    ) -> builtins.list[ExecutionEvent]:
         """Get execution events."""
         params = {}
         if step_id:
@@ -495,10 +500,11 @@ class AsyncExecutions(AsyncResource):
                 ExecutionStatus.CANCELLED,
                 ExecutionStatus.TIMED_OUT,
             ):
+                status_str = execution.status.value if isinstance(execution.status, ExecutionStatus) else execution.status
                 raise ExecutionError(
-                    f"Execution {execution.status.value}: {execution.error or 'Unknown error'}",
+                    f"Execution {status_str}: {execution.error or 'Unknown error'}",
                     execution_id=execution_id,
-                    status=execution.status.value,
+                    status=status_str,
                 )
 
             if timeout and (time.time() - start_time) > timeout:

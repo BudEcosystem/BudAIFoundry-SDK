@@ -152,11 +152,9 @@ def describe(
             if pipeline.dag:
                 if hasattr(pipeline.dag, "nodes"):
                     nodes = pipeline.dag.nodes
-                elif isinstance(pipeline.dag, dict):
-                    # Handle different DAG structures from API
-                    nodes = pipeline.dag.get("nodes", pipeline.dag.get("steps", []))
                 else:
-                    nodes = []
+                    # Handle different DAG structures from API (dict)
+                    nodes = pipeline.dag.get("nodes", pipeline.dag.get("steps", []))
 
                 console.print(f"\n  DAG: {len(nodes)} nodes/steps")
                 for node in nodes:

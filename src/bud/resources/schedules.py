@@ -115,7 +115,7 @@ class Schedules(SyncResource):
         Returns:
             Updated schedule
         """
-        update_data = {}
+        update_data: dict[str, Any] = {}
         if name is not None:
             update_data["name"] = name
         if description is not None:
@@ -240,7 +240,7 @@ class AsyncSchedules(AsyncResource):
         params: dict[str, Any] | None = None,
     ) -> Schedule:
         """Update a schedule."""
-        update_data = {}
+        update_data: dict[str, Any] = {}
         if name is not None:
             update_data["name"] = name
         if description is not None:
