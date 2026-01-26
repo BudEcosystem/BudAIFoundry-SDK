@@ -163,8 +163,152 @@ def example_list_models():
     client.close()
 
 
+def example_embeddings():
+    """Example: Create text embeddings.
+
+    Note: Update EMBEDDING_MODEL to match your deployment's available models.
+    Common embedding models: bge-m3, text-embedding-3-small, BAAI/bge-small-en-v1.5
+    """
+    print("=" * 60)
+    print("Example 5: Text Embeddings")
+    print("=" * 60)
+
+    # Update this to your deployment's embedding model
+    EMBEDDING_MODEL = os.environ.get("BUD_EMBEDDING_MODEL", "bge-m3")
+
+    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+
+    # Single text embedding
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input="Hello, world!",
+    )
+
+    print(f"Model: {response.model}")
+    print(f"Embedding dimensions: {len(response.data[0].embedding)}")
+    print(f"First 5 values: {response.data[0].embedding[:5]}")
+    print(f"Tokens used: {response.usage.total_tokens}")
+    print()
+
+    # Batch embeddings
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=["First sentence", "Second sentence", "Third sentence"],
+    )
+
+    print(f"Batch embeddings: {len(response.data)} vectors")
+    for data in response.data:
+        print(f"  Index {data.index}: {len(data.embedding)} dimensions")
+    print()
+
+    client.close()
+
+
+def example_embeddings_advanced():
+    """Example: Advanced embedding features.
+
+    Note: Update EMBEDDING_MODEL to match your deployment's available models.
+    """
+    print("=" * 60)
+    print("Example 6: Advanced Embeddings (Chunking & Caching)")
+    print("=" * 60)
+
+    # Update this to your deployment's embedding model
+    EMBEDDING_MODEL = os.environ.get("BUD_EMBEDDING_MODEL", "bge-m3")
+
+    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+
+    # Embedding with caching enabled
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input="This text will be cached for faster subsequent requests.",
+        cache_options={"enabled": "on", "max_age_s": 3600},
+    )
+
+    print("With caching:")
+    print(f"  Model: {response.model}")
+    print(f"  Dimensions: {len(response.data[0].embedding)}")
+    print()
+
+    # Embedding with priority
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input="High priority embedding request.",
+        priority="high",
+    )
+
+    print("With priority:")
+    print(f"  Model: {response.model}")
+    print(f"  Tokens: {response.usage.total_tokens}")
+    print()
+
+    client.close()
+
+
+def example_classification():
+    """Example: Text classification."""
+    print("=" * 60)
+    print("Example 7: Text Classification")
+    print("=" * 60)
+
+    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+
+    # Single text classification
+    response = client.classifications.create(
+        model="finbert",
+        input=["The stock market had a great day with major gains."],
+    )
+
+    print(f"Model: {response.model}")
+    print(f"ID: {response.id}")
+    print(f"Tokens used: {response.usage.total_tokens}")
+    print()
+    print("Classification results:")
+    for label_score in response.data[0]:
+        print(f"  {label_score.label}: {label_score.score:.4f}")
+    print()
+
+    client.close()
+
+
+def example_classification_batch():
+    """Example: Batch text classification."""
+    print("=" * 60)
+    print("Example 8: Batch Classification")
+    print("=" * 60)
+
+    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+
+    texts = [
+        "Company reports record profits this quarter.",
+        "Market crash leads to significant losses.",
+        "Trading volume remains steady today.",
+    ]
+
+    response = client.classifications.create(
+        model="finbert",
+        input=texts,
+        priority="high",
+    )
+
+    print(f"Model: {response.model}")
+    print(f"Classified {len(response.data)} texts")
+    print()
+
+    for i, (text, result) in enumerate(zip(texts, response.data, strict=True)):
+        # Get top label
+        top_label = max(result, key=lambda x: x.score)
+        print(f"Text {i + 1}: \"{text[:50]}...\"")
+        print(f"  Prediction: {top_label.label} ({top_label.score:.2%})")
+        print("  All scores: ", end="")
+        print(", ".join(f"{ls.label}={ls.score:.2%}" for ls in result))
+        print()
+
+    client.close()
+
+
 if __name__ == "__main__":
-    print("\n🚀 Bud SDK Inference API Examples\n")
+    print("\n Bud SDK Inference API Examples\n")
 
     if not API_KEY:
         print("Error: BUD_API_KEY environment variable is not set.")
@@ -175,21 +319,41 @@ if __name__ == "__main__":
     try:
         example_chat_completion()
     except Exception as e:
-        print(f"❌ Example 1 failed: {e}\n")
+        print(f"Example 1 failed: {e}\n")
 
     try:
         example_chat_with_tools()
     except Exception as e:
-        print(f"❌ Example 2 failed: {e}\n")
+        print(f"Example 2 failed: {e}\n")
 
     try:
         example_streaming()
     except Exception as e:
-        print(f"❌ Example 3 failed: {e}\n")
+        print(f"Example 3 failed: {e}\n")
 
     try:
         example_list_models()
     except Exception as e:
-        print(f"❌ Example 4 failed: {e}\n")
+        print(f"Example 4 failed: {e}\n")
 
-    print("✅ Examples complete!")
+    try:
+        example_embeddings()
+    except Exception as e:
+        print(f"Example 5 failed: {e}\n")
+
+    try:
+        example_embeddings_advanced()
+    except Exception as e:
+        print(f"Example 6 failed: {e}\n")
+
+    try:
+        example_classification()
+    except Exception as e:
+        print(f"Example 7 failed: {e}\n")
+
+    try:
+        example_classification_batch()
+    except Exception as e:
+        print(f"Example 8 failed: {e}\n")
+
+    print("Examples complete!")

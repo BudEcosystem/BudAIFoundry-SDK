@@ -8,6 +8,7 @@ from bud._streaming import Stream
 from bud.models.inference import (
     ChatCompletion,
     ChatCompletionChunk,
+    ClassifyResponse,
     EmbeddingResponse,
     Model,
     ModelList,
@@ -163,7 +164,7 @@ class Chat(SyncResource):
 class Embeddings(SyncResource):
     """Text embedding operations.
 
-    Create embeddings for text using OpenAI-compatible models.
+    Create embeddings for text, images, or audio using OpenAI-compatible models.
     """
 
     def create(
@@ -172,27 +173,52 @@ class Embeddings(SyncResource):
         model: str,
         input: str | list[str],
         encoding_format: Literal["float", "base64"] | None = None,
+        modality: Literal["text", "image", "audio"] | None = None,
         dimensions: int | None = None,
+        priority: Literal["high", "normal", "low"] | None = None,
         user: str | None = None,
+        include_input: bool | None = None,
+        chunking: dict[str, Any] | None = None,
+        cache_options: dict[str, Any] | None = None,
     ) -> EmbeddingResponse:
         """Create embeddings for the given input.
 
         Args:
             model: ID of the model to use.
-            input: Text to embed (string or list of strings).
-            encoding_format: Format for the embeddings.
-            dimensions: Number of dimensions for the output.
+            input: Text strings, URLs, or base64 data to embed.
+            encoding_format: Format for the embeddings ("float" or "base64").
+            modality: Input modality ("text", "image", or "audio").
+            dimensions: Number of dimensions for the output (0 for full).
+            priority: Request priority ("high", "normal", or "low").
             user: Unique user identifier.
+            include_input: Return original text in response (text modality only).
+            chunking: Chunking configuration for automatic text chunking.
+            cache_options: Cache options with "enabled" ("on"/"off") and "max_age_s".
 
         Returns:
             EmbeddingResponse containing the embeddings.
 
         Example:
+            # Basic text embedding
             response = client.embeddings.create(
-                model="text-embedding-3-small",
+                model="BAAI/bge-small-en-v1.5",
                 input="Hello, world!"
             )
-            print(len(response.data[0].embedding))  # e.g., 1536
+            print(len(response.data[0].embedding))
+
+            # With chunking
+            response = client.embeddings.create(
+                model="BAAI/bge-small-en-v1.5",
+                input="Long text to chunk...",
+                chunking={"strategy": "sentence", "chunk_size": 512}
+            )
+
+            # With caching
+            response = client.embeddings.create(
+                model="BAAI/bge-small-en-v1.5",
+                input="Hello, world!",
+                cache_options={"enabled": "on", "max_age_s": 3600}
+            )
         """
         payload: dict[str, Any] = {
             "model": model,
@@ -202,13 +228,71 @@ class Embeddings(SyncResource):
         # Add optional parameters (filter out None values)
         optional_params = {
             "encoding_format": encoding_format,
+            "modality": modality,
             "dimensions": dimensions,
+            "priority": priority,
             "user": user,
+            "include_input": include_input,
+            "chunking": chunking,
         }
         payload.update({k: v for k, v in optional_params.items() if v is not None})
 
+        # Add cache options with special key
+        if cache_options is not None:
+            payload["tensorzero::cache_options"] = cache_options
+
         data = self._http.post("/v1/embeddings", json=payload)
         return EmbeddingResponse.model_validate(data)
+
+
+class Classifications(SyncResource):
+    """Text classification operations.
+
+    Classify text using deployed classifier models.
+    """
+
+    def create(
+        self,
+        *,
+        input: list[str],
+        model: str = "default/not-specified",
+        raw_scores: bool | None = None,
+        priority: Literal["high", "normal", "low"] | None = None,
+    ) -> ClassifyResponse:
+        """Classify the given input texts.
+
+        Args:
+            input: List of text strings to classify.
+            model: ID of the classifier model to use.
+            raw_scores: If True, return raw scores instead of normalized probabilities.
+            priority: Request priority ("high", "normal", or "low").
+
+        Returns:
+            ClassifyResponse containing classification results with label-score pairs.
+
+        Example:
+            response = client.classifications.create(
+                model="ProsusAI/finbert",
+                input=["The stock market is performing well today"]
+            )
+            for result in response.data:
+                for label_score in result:
+                    print(f"{label_score.label}: {label_score.score}")
+        """
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": input,
+        }
+
+        # Add optional parameters (filter out None values)
+        optional_params = {
+            "raw_scores": raw_scores,
+            "priority": priority,
+        }
+        payload.update({k: v for k, v in optional_params.items() if v is not None})
+
+        data = self._http.post("/v1/classify", json=payload)
+        return ClassifyResponse.model_validate(data)
 
 
 class InferenceModels(SyncResource):

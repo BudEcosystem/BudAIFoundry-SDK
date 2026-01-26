@@ -5,10 +5,21 @@ Official Python SDK for the BudAI Foundry Platform. Build, manage, and execute D
 ## Features
 
 - **Python SDK** - Full-featured client library for the BudAI Foundry API
+- **OpenAI-Compatible Inference** - Chat completions, embeddings, and classifications
 - **CLI Tool** - Command-line interface for pipeline operations
 - **Pipeline DSL** - Pythonic way to define DAG pipelines
 - **Async Support** - Both sync and async clients available
 - **Type Safety** - Full type hints and Pydantic models
+
+## Documentation
+
+- [Quick Start Guide](docs/quickstart.md)
+- [Configuration & Authentication](docs/configuration.md)
+- **API Reference**
+  - [Chat Completions](docs/api/chat.md)
+  - [Embeddings](docs/api/embeddings.md)
+  - [Classifications](docs/api/classifications.md)
+  - [Models](docs/api/models.md)
 
 ## Installation
 
@@ -253,6 +264,147 @@ actions = client.actions.list()
 action = client.actions.get("log")
 print(f"Parameters: {action.params}")
 ```
+
+---
+
+## Inference API
+
+The SDK provides OpenAI-compatible inference endpoints for chat, embeddings, and classifications.
+
+> See [examples/inference_example.py](examples/inference_example.py) for complete working examples.
+
+### Chat Completions
+
+Create chat completions with streaming support. [Full documentation](docs/api/chat.md)
+
+```python
+from bud import BudClient
+
+client = BudClient(api_key="your-api-key")
+
+# Basic chat completion
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello!"}
+    ],
+    temperature=0.7,
+    max_tokens=100,
+)
+print(response.choices[0].message.content)
+
+# Streaming
+stream = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Count to 5"}],
+    stream=True
+)
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### Embeddings
+
+Create text, image, or audio embeddings with chunking and caching support. [Full documentation](docs/api/embeddings.md)
+
+```python
+# Basic embedding
+response = client.embeddings.create(
+    model="bge-m3",
+    input="Hello, world!"
+)
+print(f"Dimensions: {len(response.data[0].embedding)}")
+
+# Batch embeddings
+response = client.embeddings.create(
+    model="bge-m3",
+    input=["First text", "Second text", "Third text"]
+)
+
+# With caching
+response = client.embeddings.create(
+    model="bge-m3",
+    input="Frequently requested text",
+    cache_options={"enabled": "on", "max_age_s": 3600}
+)
+
+# With chunking for long documents
+response = client.embeddings.create(
+    model="bge-m3",
+    input="Very long document...",
+    chunking={"strategy": "sentence", "chunk_size": 512}
+)
+```
+
+**Embedding Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model` | `str` | Model ID (required) |
+| `input` | `str \| list[str]` | Text to embed (required) |
+| `encoding_format` | `str` | `"float"` or `"base64"` |
+| `modality` | `str` | `"text"`, `"image"`, or `"audio"` |
+| `dimensions` | `int` | Output dimensions (0 = full) |
+| `priority` | `str` | `"high"`, `"normal"`, or `"low"` |
+| `include_input` | `bool` | Return original text in response |
+| `chunking` | `dict` | Chunking configuration |
+| `cache_options` | `dict` | Cache settings |
+
+### Classifications
+
+Classify text using deployed classifier models. [Full documentation](docs/api/classifications.md)
+
+```python
+# Single classification
+response = client.classifications.create(
+    model="finbert",
+    input=["The stock market rallied today with strong gains."]
+)
+
+for label_score in response.data[0]:
+    print(f"{label_score.label}: {label_score.score:.2%}")
+# Output: positive: 92.84%, neutral: 5.06%, negative: 2.10%
+
+# Batch classification
+response = client.classifications.create(
+    model="finbert",
+    input=[
+        "Company reports record profits.",
+        "Market crash leads to losses.",
+        "Trading volume steady today."
+    ],
+    priority="high"
+)
+
+for i, result in enumerate(response.data):
+    top = max(result, key=lambda x: x.score)
+    print(f"Text {i+1}: {top.label} ({top.score:.1%})")
+```
+
+**Classification Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input` | `list[str]` | Texts to classify (required) |
+| `model` | `str` | Classifier model ID |
+| `raw_scores` | `bool` | Return raw scores vs normalized |
+| `priority` | `str` | `"high"`, `"normal"`, or `"low"` |
+
+### List Models
+
+```python
+# List all available models
+models = client.models.list()
+for model in models.data:
+    print(f"{model.id} - {model.owned_by}")
+
+# Get specific model info
+model = client.models.retrieve("gpt-4")
+```
+
+---
 
 ## Pipeline DSL
 

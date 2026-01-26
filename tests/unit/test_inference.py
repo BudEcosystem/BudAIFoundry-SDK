@@ -449,3 +449,256 @@ def test_chat_completion_message_limit(client: BudClient) -> None:
             model="gpt-4",
             messages=messages,
         )
+
+
+# Extended Embedding Tests
+
+
+@respx.mock
+def test_create_embedding_with_extended_params(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test creating embeddings with extended parameters."""
+    extended_response = {
+        "object": "list",
+        "data": [
+            {
+                "index": 0,
+                "embedding": [0.1, 0.2, 0.3],
+                "object": "embedding",
+                "text": "Hello, world!",
+            }
+        ],
+        "model": "BAAI/bge-small-en-v1.5",
+        "usage": {"prompt_tokens": 5, "total_tokens": 5},
+    }
+
+    route = respx.post(f"{base_url}/v1/embeddings").mock(
+        return_value=Response(200, json=extended_response)
+    )
+
+    response = client.embeddings.create(
+        model="BAAI/bge-small-en-v1.5",
+        input="Hello, world!",
+        modality="text",
+        priority="high",
+        include_input=True,
+        dimensions=512,
+    )
+
+    # Verify request payload includes extended params
+    request = route.calls.last.request
+    payload = json.loads(request.content)
+    assert payload["modality"] == "text"
+    assert payload["priority"] == "high"
+    assert payload["include_input"] is True
+    assert payload["dimensions"] == 512
+
+    # Verify response includes text field
+    assert response.data[0].text == "Hello, world!"
+
+
+@respx.mock
+def test_create_embedding_with_chunking(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test creating embeddings with chunking configuration."""
+    chunked_response = {
+        "object": "list",
+        "data": [
+            {
+                "index": 0,
+                "embedding": [0.1, 0.2],
+                "object": "embedding",
+                "chunk_text": "First chunk",
+            },
+            {
+                "index": 1,
+                "embedding": [0.3, 0.4],
+                "object": "embedding",
+                "chunk_text": "Second chunk",
+            },
+        ],
+        "model": "BAAI/bge-small-en-v1.5",
+        "usage": {"prompt_tokens": 10, "total_tokens": 10},
+    }
+
+    route = respx.post(f"{base_url}/v1/embeddings").mock(
+        return_value=Response(200, json=chunked_response)
+    )
+
+    chunking_config = {
+        "strategy": "sentence",
+        "chunk_size": 512,
+        "overlap": 50,
+    }
+
+    response = client.embeddings.create(
+        model="BAAI/bge-small-en-v1.5",
+        input="Long text to be chunked into multiple parts.",
+        chunking=chunking_config,
+    )
+
+    # Verify chunking config in request
+    request = route.calls.last.request
+    payload = json.loads(request.content)
+    assert payload["chunking"] == chunking_config
+
+    # Verify chunk_text in response
+    assert len(response.data) == 2
+    assert response.data[0].chunk_text == "First chunk"
+    assert response.data[1].chunk_text == "Second chunk"
+
+
+@respx.mock
+def test_create_embedding_with_cache_options(
+    client: BudClient,
+    base_url: str,
+    sample_embedding_response: dict[str, Any],
+) -> None:
+    """Test creating embeddings with cache options."""
+    route = respx.post(f"{base_url}/v1/embeddings").mock(
+        return_value=Response(200, json=sample_embedding_response)
+    )
+
+    client.embeddings.create(
+        model="BAAI/bge-small-en-v1.5",
+        input="Hello, world!",
+        cache_options={"enabled": "on", "max_age_s": 3600},
+    )
+
+    # Verify cache options in request with special key
+    request = route.calls.last.request
+    payload = json.loads(request.content)
+    assert payload["tensorzero::cache_options"] == {"enabled": "on", "max_age_s": 3600}
+
+
+# Classification Tests
+
+
+@pytest.fixture
+def sample_classify_response() -> dict[str, Any]:
+    """Sample classification response."""
+    return {
+        "object": "classify",
+        "data": [
+            [
+                {"label": "positive", "score": 0.85},
+                {"label": "neutral", "score": 0.10},
+                {"label": "negative", "score": 0.05},
+            ]
+        ],
+        "model": "ProsusAI/finbert",
+        "usage": {"prompt_tokens": 15, "total_tokens": 15},
+        "id": "infinity-abc123",
+        "created": 1699000000,
+    }
+
+
+@respx.mock
+def test_create_classification(
+    client: BudClient,
+    base_url: str,
+    sample_classify_response: dict[str, Any],
+) -> None:
+    """Test creating classifications."""
+    from bud.models.inference import ClassifyResponse
+
+    respx.post(f"{base_url}/v1/classify").mock(
+        return_value=Response(200, json=sample_classify_response)
+    )
+
+    response = client.classifications.create(
+        model="ProsusAI/finbert",
+        input=["The stock market is performing well today"],
+    )
+
+    assert isinstance(response, ClassifyResponse)
+    assert response.object == "classify"
+    assert response.model == "ProsusAI/finbert"
+    assert len(response.data) == 1
+    assert len(response.data[0]) == 3
+    assert response.data[0][0].label == "positive"
+    assert response.data[0][0].score == 0.85
+    assert response.usage.total_tokens == 15
+
+
+@respx.mock
+def test_create_classification_batch(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test creating classifications for multiple inputs."""
+    batch_response = {
+        "object": "classify",
+        "data": [
+            [
+                {"label": "positive", "score": 0.9},
+                {"label": "negative", "score": 0.1},
+            ],
+            [
+                {"label": "negative", "score": 0.8},
+                {"label": "positive", "score": 0.2},
+            ],
+        ],
+        "model": "ProsusAI/finbert",
+        "usage": {"prompt_tokens": 20, "total_tokens": 20},
+    }
+
+    respx.post(f"{base_url}/v1/classify").mock(
+        return_value=Response(200, json=batch_response)
+    )
+
+    response = client.classifications.create(
+        model="ProsusAI/finbert",
+        input=["Good news!", "Bad news!"],
+    )
+
+    assert len(response.data) == 2
+    assert response.data[0][0].label == "positive"
+    assert response.data[1][0].label == "negative"
+
+
+@respx.mock
+def test_create_classification_with_options(
+    client: BudClient,
+    base_url: str,
+    sample_classify_response: dict[str, Any],
+) -> None:
+    """Test creating classifications with all options."""
+    route = respx.post(f"{base_url}/v1/classify").mock(
+        return_value=Response(200, json=sample_classify_response)
+    )
+
+    client.classifications.create(
+        model="ProsusAI/finbert",
+        input=["Test input"],
+        raw_scores=True,
+        priority="high",
+    )
+
+    # Verify request payload
+    request = route.calls.last.request
+    payload = json.loads(request.content)
+    assert payload["model"] == "ProsusAI/finbert"
+    assert payload["input"] == ["Test input"]
+    assert payload["raw_scores"] is True
+    assert payload["priority"] == "high"
+
+
+def test_classify_response_model(sample_classify_response: dict[str, Any]) -> None:
+    """Test ClassifyResponse model validation."""
+    from bud.models.inference import ClassifyResponse
+
+    response = ClassifyResponse.model_validate(sample_classify_response)
+
+    assert response.object == "classify"
+    assert len(response.data) == 1
+    assert response.data[0][0].label == "positive"
+    assert response.data[0][0].score == 0.85
+    assert response.model == "ProsusAI/finbert"
+    assert response.usage.prompt_tokens == 15
+    assert response.id == "infinity-abc123"
+    assert response.created == 1699000000

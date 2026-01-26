@@ -84,6 +84,8 @@ class EmbeddingData(BudModel):
     index: int
     embedding: list[float]
     object: Literal["embedding"] = "embedding"
+    text: str | None = None  # Original text (if include_input=True)
+    chunk_text: str | None = None  # Chunk text (if chunking enabled)
 
 
 class EmbeddingUsage(BudModel):
@@ -120,3 +122,30 @@ class ModelList(BudModel):
 
     object: Literal["list"] = "list"
     data: list[Model]
+
+
+class ClassifyLabelScore(BudModel):
+    """A single classification label with its score."""
+
+    label: str
+    score: float
+
+
+class ClassifyUsage(BudModel):
+    """Token usage for classification."""
+
+    prompt_tokens: int
+    total_tokens: int
+
+
+class ClassifyResponse(BudModel):
+    """Response from a classification request."""
+
+    model_config = ConfigDict(extra="allow")
+
+    object: Literal["classify"] = "classify"
+    data: list[list[ClassifyLabelScore]]
+    model: str
+    usage: ClassifyUsage
+    id: str | None = None
+    created: int | None = None
