@@ -160,7 +160,7 @@ class Pipelines(SyncResource):
                     "id": node.get("id"),
                     "name": node.get("name", node.get("id")),
                     "action": node.get("action_id", ""),
-                    "config": node.get("config", {}),
+                    "params": node.get("config", {}),
                     "depends_on": node.get("depends_on", []),
                 }
             )
@@ -274,7 +274,7 @@ class AsyncPipelines(AsyncResource):
                     "id": node.get("id"),
                     "name": node.get("name", node.get("id")),
                     "action": node.get("action_id", ""),
-                    "config": node.get("config", {}),
+                    "params": node.get("config", {}),
                     "depends_on": node.get("depends_on", []),
                 }
             )

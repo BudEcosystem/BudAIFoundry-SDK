@@ -170,7 +170,7 @@ def test_run_ephemeral(
     pipeline_definition = {
         "name": "ephemeral-test",
         "steps": [
-            {"id": "step-1", "type": "action", "action_id": "bud.http.request"}
+            {"id": "step-1", "name": "HTTP Request", "action": "bud.http.request", "params": {}}
         ],
     }
     execution = client.executions.run_ephemeral(
@@ -256,7 +256,7 @@ def test_run_ephemeral_handles_error_response(
 
     with pytest.raises(ExecutionError) as exc_info:
         client.executions.run_ephemeral(
-            pipeline_definition={"name": "bad-pipeline", "steps": [{"name": "step1"}]},
+            pipeline_definition={"name": "bad-pipeline", "steps": [{"name": "step1"}]},  # missing id, action
         )
 
     assert "Failed to run ephemeral pipeline" in str(exc_info.value)

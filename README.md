@@ -220,6 +220,17 @@ execution = client.executions.create(
     initiator="my-service",                  # Service identifier
 )
 
+# Run ephemeral pipeline (without registering it first)
+execution = client.executions.run_ephemeral(
+    pipeline_definition={
+        "name": "one-off-task",
+        "steps": [
+            {"id": "step1", "name": "Log Message", "action": "log", "params": {"message": "Hello"}},
+        ],
+    },
+    params={"input": "data"},
+)
+
 # Get execution status
 execution = client.executions.get(execution.effective_id)
 print(f"Status: {execution.status}")
@@ -253,6 +264,38 @@ execution = client.executions.run(
 print(f"Execution started: {execution.effective_id}")
 # Progress events will be published to "my-service-progress" topic
 ```
+
+#### Ephemeral Executions
+
+Run a pipeline definition directly without registering it first. Useful for one-off tasks, testing, or ad-hoc workflows:
+
+```python
+from bud import BudClient
+
+client = BudClient()
+
+# Execute an inline pipeline definition
+execution = client.executions.run_ephemeral(
+    pipeline_definition={
+        "name": "data-transform",
+        "steps": [
+            {
+                "id": "transform",
+                "name": "Transform Input",
+                "action": "transform",
+                "params": {"operation": "uppercase"},
+            },
+        ],
+    },
+    params={"input": "hello world"},
+    wait=True,  # Wait for completion
+)
+
+print(f"Status: {execution.status}")
+print(f"Output: {execution.outputs}")
+```
+
+The ephemeral execution is tracked but the pipeline definition is not persisted. The returned execution will have `pipeline_id=None`.
 
 ### Actions
 
