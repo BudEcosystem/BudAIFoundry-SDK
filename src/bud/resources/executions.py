@@ -129,6 +129,83 @@ class Executions(SyncResource):
             timeout=timeout,
         )
 
+    def run_ephemeral(
+        self,
+        pipeline_definition: dict[str, Any],
+        *,
+        params: dict[str, Any] | None = None,
+        callback_topics: list[str] | None = None,
+        user_id: str | None = None,
+        initiator: str | None = None,
+        wait: bool = False,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+    ) -> Execution:
+        """Execute a pipeline definition without registering it.
+
+        This allows one-off executions, testing pipeline definitions,
+        or temporary/ad-hoc workflows without saving the pipeline.
+
+        Args:
+            pipeline_definition: Inline pipeline definition (DAG, name, steps, etc.)
+            params: Execution parameters
+            callback_topics: Dapr pub/sub topics for progress events
+            user_id: User ID for tracking
+            initiator: Initiator identifier (default: "api")
+            wait: Wait for execution to complete
+            poll_interval: Polling interval in seconds (when wait=True)
+            timeout: Maximum wait time in seconds
+
+        Returns:
+            Execution object
+
+        Raises:
+            ExecutionError: If execution fails (when wait=True)
+            TimeoutError: If timeout exceeded (when wait=True)
+
+        Example:
+            ```python
+            execution = client.executions.run_ephemeral(
+                pipeline_definition={
+                    "name": "my-test-pipeline",
+                    "steps": [...],
+                },
+                params={"input": "data"},
+            )
+            ```
+        """
+        body: dict[str, Any] = {
+            "pipeline_definition": pipeline_definition,
+            "params": params or {},
+        }
+        if callback_topics:
+            body["callback_topics"] = callback_topics
+        if user_id:
+            body["user_id"] = user_id
+        if initiator:
+            body["initiator"] = initiator
+
+        data = self._http.post("/budpipeline/run", json=body)
+
+        # Handle error responses that may come with 2xx status
+        # Check for 'detail' key (FastAPI validation errors) - but not 'error' which is a valid Execution field
+        if isinstance(data, dict) and "detail" in data and "id" not in data:
+            error_msg = data.get("detail")
+            if isinstance(error_msg, dict):
+                error_msg = error_msg.get("error") or error_msg.get("message") or str(error_msg)
+            raise ExecutionError(f"Failed to run ephemeral pipeline: {error_msg}")
+
+        execution = Execution.model_validate(data)
+
+        if wait:
+            execution = self._wait_for_completion(
+                execution.effective_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+
+        return execution
+
     def list(
         self,
         *,
@@ -411,6 +488,68 @@ class AsyncExecutions(AsyncResource):
             wait=wait,
             timeout=timeout,
         )
+
+    async def run_ephemeral(
+        self,
+        pipeline_definition: dict[str, Any],
+        *,
+        params: dict[str, Any] | None = None,
+        callback_topics: list[str] | None = None,
+        user_id: str | None = None,
+        initiator: str | None = None,
+        wait: bool = False,
+        poll_interval: float = 2.0,
+        timeout: float | None = None,
+    ) -> Execution:
+        """Execute a pipeline definition without registering it.
+
+        This allows one-off executions, testing pipeline definitions,
+        or temporary/ad-hoc workflows without saving the pipeline.
+
+        Args:
+            pipeline_definition: Inline pipeline definition (DAG, name, steps, etc.)
+            params: Execution parameters
+            callback_topics: Dapr pub/sub topics for progress events
+            user_id: User ID for tracking
+            initiator: Initiator identifier (default: "api")
+            wait: Wait for execution to complete
+            poll_interval: Polling interval in seconds (when wait=True)
+            timeout: Maximum wait time in seconds
+
+        Returns:
+            Execution object
+        """
+        body: dict[str, Any] = {
+            "pipeline_definition": pipeline_definition,
+            "params": params or {},
+        }
+        if callback_topics:
+            body["callback_topics"] = callback_topics
+        if user_id:
+            body["user_id"] = user_id
+        if initiator:
+            body["initiator"] = initiator
+
+        data = await self._http.post("/budpipeline/run", json=body)
+
+        # Handle error responses that may come with 2xx status
+        # Check for 'detail' key (FastAPI validation errors) - but not 'error' which is a valid Execution field
+        if isinstance(data, dict) and "detail" in data and "id" not in data:
+            error_msg = data.get("detail")
+            if isinstance(error_msg, dict):
+                error_msg = error_msg.get("error") or error_msg.get("message") or str(error_msg)
+            raise ExecutionError(f"Failed to run ephemeral pipeline: {error_msg}")
+
+        execution = Execution.model_validate(data)
+
+        if wait:
+            execution = await self._wait_for_completion(
+                execution.effective_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+
+        return execution
 
     async def list(
         self,

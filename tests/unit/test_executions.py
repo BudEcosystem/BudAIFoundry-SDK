@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 import respx
 from httpx import Response
 
 from bud.client import BudClient
+from bud.exceptions import ExecutionError
 from bud.models.execution import ExecutionStatus
 
 
@@ -137,3 +139,124 @@ def test_get_execution_progress(
     assert progress.total_steps == 5
     assert progress.completed_steps == 3
     assert progress.percent_complete == 60.0
+
+
+@respx.mock
+def test_run_ephemeral(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test running an ephemeral pipeline execution."""
+    ephemeral_response = {
+        "id": "exec-ephemeral-123",
+        "pipeline_id": None,
+        "pipeline_name": "ephemeral-test",
+        "status": "pending",
+        "params": {"input": "data"},
+        "context": {},
+        "progress": None,
+        "steps": [],
+        "started_at": None,
+        "completed_at": None,
+        "duration_ms": None,
+        "error": None,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": None,
+    }
+    route = respx.post(f"{base_url}/budpipeline/run").mock(
+        return_value=Response(201, json=ephemeral_response)
+    )
+
+    pipeline_definition = {
+        "name": "ephemeral-test",
+        "steps": [
+            {"id": "step-1", "type": "action", "action_id": "bud.http.request"}
+        ],
+    }
+    execution = client.executions.run_ephemeral(
+        pipeline_definition,
+        params={"input": "data"},
+    )
+
+    assert execution.id == "exec-ephemeral-123"
+    assert execution.pipeline_id is None
+    assert execution.status == ExecutionStatus.PENDING
+
+    # Verify request body
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["pipeline_definition"] == pipeline_definition
+    assert body["params"] == {"input": "data"}
+
+
+@respx.mock
+def test_run_ephemeral_with_all_options(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test running ephemeral execution with all optional parameters."""
+    ephemeral_response = {
+        "id": "exec-ephemeral-456",
+        "pipeline_id": None,
+        "pipeline_name": "full-options-test",
+        "status": "pending",
+        "params": {"key": "value"},
+        "context": {},
+        "progress": None,
+        "steps": [],
+        "started_at": None,
+        "completed_at": None,
+        "duration_ms": None,
+        "error": None,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": None,
+    }
+    route = respx.post(f"{base_url}/budpipeline/run").mock(
+        return_value=Response(201, json=ephemeral_response)
+    )
+
+    pipeline_definition = {"name": "full-options-test", "steps": []}
+    execution = client.executions.run_ephemeral(
+        pipeline_definition,
+        params={"key": "value"},
+        callback_topics=["progress-topic"],
+        user_id="user-789",
+        initiator="test-service",
+    )
+
+    assert execution.id == "exec-ephemeral-456"
+
+    # Verify all fields were sent in request
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["pipeline_definition"] == pipeline_definition
+    assert body["params"] == {"key": "value"}
+    assert body["callback_topics"] == ["progress-topic"]
+    assert body["user_id"] == "user-789"
+    assert body["initiator"] == "test-service"
+
+
+@respx.mock
+def test_run_ephemeral_handles_error_response(
+    client: BudClient,
+    base_url: str,
+) -> None:
+    """Test that run_ephemeral raises ExecutionError on error response."""
+    error_response = {
+        "detail": {
+            "error": "Invalid pipeline definition",
+            "validation_errors": ["steps.0.id: Field required"],
+        }
+    }
+    respx.post(f"{base_url}/budpipeline/run").mock(
+        return_value=Response(200, json=error_response)
+    )
+
+    with pytest.raises(ExecutionError) as exc_info:
+        client.executions.run_ephemeral(
+            pipeline_definition={"name": "bad-pipeline", "steps": [{"name": "step1"}]},
+        )
+
+    assert "Failed to run ephemeral pipeline" in str(exc_info.value)
