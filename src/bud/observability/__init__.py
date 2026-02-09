@@ -188,6 +188,10 @@ def _lazy_traced_stream() -> type:
 def __getattr__(name: str) -> Any:
     if name == "TracedStream":
         return _lazy_traced_stream()
+    if name == "track":
+        from bud.observability._track import track
+
+        return track
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -206,4 +210,5 @@ __all__ = [
     "ObservabilityMode",
     "BaggageSpanProcessor",
     "TracedStream",
+    "track",
 ]
