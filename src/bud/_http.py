@@ -41,6 +41,17 @@ DEFAULT_HEADERS = {
 }
 
 
+def _inject_trace_context(headers: dict[str, str]) -> dict[str, str]:
+    """Inject W3C trace context into outgoing headers (no-op if OTel unavailable)."""
+    try:
+        from opentelemetry import propagate
+
+        propagate.inject(carrier=headers)
+    except Exception:  # noqa: BLE001
+        pass
+    return headers
+
+
 class HttpClient:
     """Synchronous HTTP client for BudAI API."""
 
@@ -129,14 +140,17 @@ class HttpClient:
             pool=5.0,  # Pool acquisition
         )
 
+        outgoing_headers = {
+            **auth_headers,
+            "Accept": "text/event-stream",
+        }
+        _inject_trace_context(outgoing_headers)
+
         with self._client.stream(
             method,
             path,
             json=json,
-            headers={
-                **auth_headers,
-                "Accept": "text/event-stream",
-            },
+            headers=outgoing_headers,
             timeout=stream_timeout,
         ) as response:
             # Check for errors before yielding
@@ -177,8 +191,9 @@ class HttpClient:
 
         while retry_count <= self._max_retries:
             try:
-                # Get auth headers for this request
+                # Get auth headers + inject trace context for this request
                 auth_headers = self._get_auth_headers()
+                _inject_trace_context(auth_headers)
 
                 response = self._client.request(
                     method,
