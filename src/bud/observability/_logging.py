@@ -48,4 +48,10 @@ def setup_log_bridge(logger_provider: Any, min_level: str = "WARNING") -> None:
         level=level,
         logger_provider=logger_provider,
     )
-    logging.getLogger().addHandler(handler)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    # Ensure the root logger passes records at the requested level to handlers.
+    # Without this, the root logger's default WARNING gate drops lower-level records
+    # before they ever reach the OTel handler.
+    if root.level > level:
+        root.setLevel(level)
