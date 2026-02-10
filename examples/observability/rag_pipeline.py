@@ -45,7 +45,6 @@ from bud.observability import ObservabilityConfig, configure, get_meter, get_tra
 # ---------------------------------------------------------------------------
 BASE_URL = os.environ.get("BUD_BASE_URL", "http://localhost:56054")
 API_KEY = os.environ.get("BUD_API_KEY", "my-test-api-key")
-OTEL_ENDPOINT = os.environ.get("BUD_OTEL_ENDPOINT", "http://localhost:56054")
 
 # ---------------------------------------------------------------------------
 # Knowledge base (hardcoded documents)
@@ -191,10 +190,10 @@ def llm_generation(tracer, client: BudClient, context: str, query: str) -> str:
 def main() -> None:
     global meter, documents_processed, retrieval_latency, pipeline_duration
 
+    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
     configure(
+        client=client,
         service_name="rag-pipeline-example",
-        collector_endpoint=OTEL_ENDPOINT,
-        api_key="my-test-api-key",
         config=ObservabilityConfig(log_level="INFO"),
     )
 
@@ -216,7 +215,6 @@ def main() -> None:
     )
 
     tracer = get_tracer("rag-pipeline")
-    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
     try:
         query = "How does RAG use vector retrieval to answer questions?"
         rag_logger.info("Starting RAG pipeline: query=%r", query)

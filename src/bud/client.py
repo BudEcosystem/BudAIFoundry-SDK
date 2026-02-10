@@ -281,6 +281,16 @@ class BudClient:
     def __repr__(self) -> str:
         return f"BudClient(base_url={self._base_url!r})"
 
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @property
+    def api_key(self) -> str | None:
+        if isinstance(self._auth, APIKeyAuth):
+            return self._auth.api_key
+        return None
+
 
 class AsyncBudClient:
     """Asynchronous client for BudAI API.
@@ -372,3 +382,11 @@ class AsyncBudClient:
 
     def __repr__(self) -> str:
         return f"AsyncBudClient(base_url={self._base_url!r})"
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @property
+    def api_key(self) -> str | None:
+        return self._api_key

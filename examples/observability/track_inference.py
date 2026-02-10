@@ -22,7 +22,6 @@ from bud.observability import configure, shutdown, track, track_chat_completions
 
 BASE_URL = os.environ.get("BUD_BASE_URL", "http://localhost:56054")
 API_KEY = os.environ.get("BUD_API_KEY", "my-test-api-key")
-OTEL_ENDPOINT = os.environ.get("BUD_OTEL_ENDPOINT", "http://localhost:56054")
 
 
 def example_1_non_streaming(client: BudClient) -> None:
@@ -131,9 +130,8 @@ def example_6_capture_nothing() -> None:
 
 
 def main() -> None:
-    configure(service_name="track-inference-example", collector_endpoint=OTEL_ENDPOINT, api_key="my-test-api-key")
-
     client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+    configure(client=client, service_name="track-inference-example")
     track_chat_completions(client)
 
     try:

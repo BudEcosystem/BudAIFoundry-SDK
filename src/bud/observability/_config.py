@@ -2,8 +2,8 @@
 
 Configuration precedence:
 1. Explicit constructor arguments (highest)
-2. BUD_OTEL_* environment variables
-3. Standard OTEL_* environment variables
+2. Values from ``client`` parameter
+3. BUD_API_KEY / BUD_BASE_URL environment variables
 4. Defaults (lowest)
 """
 
@@ -44,7 +44,7 @@ class ObservabilityConfig:
     # Core
     mode: ObservabilityMode = ObservabilityMode.AUTO
     api_key: str | None = None
-    collector_endpoint: str = "https://otel.bud.studio:4318"
+    collector_endpoint: str | None = None
     service_name: str = "bud-sdk-client"
     enabled: bool = True
 
@@ -94,13 +94,8 @@ class ObservabilityConfig:
 
         return cls(
             mode=mode,
-            api_key=_env("BUD_OTEL_API_KEY"),
-            collector_endpoint=_env(
-                "BUD_OTEL_ENDPOINT",
-                "OTEL_EXPORTER_OTLP_ENDPOINT",
-                "https://otel.bud.studio:4318",
-            )
-            or "https://otel.bud.studio:4318",
+            api_key=os.environ.get("BUD_API_KEY"),
+            collector_endpoint=os.environ.get("BUD_BASE_URL"),
             service_name=_env("BUD_OTEL_SERVICE_NAME", "OTEL_SERVICE_NAME", "bud-sdk-client")
             or "bud-sdk-client",
             enabled=enabled,

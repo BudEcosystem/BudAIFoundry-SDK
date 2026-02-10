@@ -32,7 +32,6 @@ from bud.observability import configure, shutdown, track
 
 BASE_URL = os.environ.get("BUD_BASE_URL", "http://localhost:56054")
 API_KEY = os.environ.get("BUD_API_KEY", "my-test-api-key")
-OTEL_ENDPOINT = os.environ.get("BUD_OTEL_ENDPOINT", "http://localhost:56056")
 
 # Higher token budget so reasoning models finish their thinking phase and
 # produce actual content tokens.  Reasoning models (e.g. DeepSeek-R1) first
@@ -390,8 +389,8 @@ def _consume_stream_with_context(ctx: otel_context.Context, gen_fn: Any, *args: 
 
 
 def main() -> None:
-    configure(service_name="stream-analyzer", collector_endpoint=OTEL_ENDPOINT)
     client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+    configure(client=client, service_name="stream-analyzer")
 
     try:
         # --- Example 1: Basic streaming (yield_count + auto-join) ---

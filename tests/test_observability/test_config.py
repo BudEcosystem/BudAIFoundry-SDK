@@ -26,7 +26,7 @@ class TestObservabilityConfig:
         config = ObservabilityConfig()
         assert config.mode == ObservabilityMode.AUTO
         assert config.api_key is None
-        assert config.collector_endpoint == "https://otel.bud.studio:4318"
+        assert config.collector_endpoint is None
         assert config.service_name == "bud-sdk-client"
         assert config.enabled is True
         assert config.traces_enabled is True
@@ -54,8 +54,8 @@ class TestObservabilityConfig:
 
     def test_resolve_from_env_bud_vars(self) -> None:
         env = {
-            "BUD_OTEL_API_KEY": "env-key",
-            "BUD_OTEL_ENDPOINT": "http://env:4318",
+            "BUD_API_KEY": "env-key",
+            "BUD_BASE_URL": "http://env:4318",
             "BUD_OTEL_SERVICE_NAME": "env-service",
             "BUD_OTEL_MODE": "create",
             "BUD_OTEL_ENABLED": "true",
@@ -68,9 +68,8 @@ class TestObservabilityConfig:
         assert config.mode == ObservabilityMode.CREATE
         assert config.enabled is True
 
-    def test_resolve_from_env_otel_fallback(self) -> None:
+    def test_resolve_from_env_otel_service_name_fallback(self) -> None:
         env = {
-            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4318",
             "OTEL_SERVICE_NAME": "otel-service",
         }
         with patch.dict(os.environ, env, clear=False):
@@ -79,8 +78,23 @@ class TestObservabilityConfig:
                 if key.startswith("BUD_OTEL_"):
                     del os.environ[key]
             config = ObservabilityConfig._resolve_from_env()
-        assert config.collector_endpoint == "http://otel:4318"
         assert config.service_name == "otel-service"
+
+    def test_resolve_from_env_bud_api_key(self) -> None:
+        with patch.dict(os.environ, {"BUD_API_KEY": "my-api-key"}, clear=False):
+            config = ObservabilityConfig._resolve_from_env()
+        assert config.api_key == "my-api-key"
+
+    def test_resolve_from_env_bud_base_url(self) -> None:
+        with patch.dict(os.environ, {"BUD_BASE_URL": "http://custom:4318"}, clear=False):
+            config = ObservabilityConfig._resolve_from_env()
+        assert config.collector_endpoint == "http://custom:4318"
+
+    def test_resolve_from_env_defaults_without_env(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = ObservabilityConfig._resolve_from_env()
+        assert config.api_key is None
+        assert config.collector_endpoint is None
 
     def test_resolve_from_env_disabled(self) -> None:
         with patch.dict(os.environ, {"BUD_OTEL_ENABLED": "false"}, clear=False):

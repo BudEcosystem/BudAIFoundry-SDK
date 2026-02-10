@@ -30,7 +30,6 @@ from bud.observability import configure, shutdown, track
 
 BASE_URL = os.environ.get("BUD_BASE_URL", "http://localhost:56054")
 API_KEY = os.environ.get("BUD_API_KEY", "my-test-api-key")
-OTEL_ENDPOINT = os.environ.get("BUD_OTEL_ENDPOINT", "http://localhost:56056")
 
 
 # ---------------------------------------------------------------------------
@@ -245,8 +244,8 @@ def _run_with_context(ctx: otel_context.Context, fn, *args):
 
 
 def main() -> None:
-    configure(service_name="doc-analyzer", collector_endpoint=OTEL_ENDPOINT)
     client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+    configure(client=client, service_name="doc-analyzer")
 
     try:
         # --- Example 1: Full pipeline (nested spans) ---

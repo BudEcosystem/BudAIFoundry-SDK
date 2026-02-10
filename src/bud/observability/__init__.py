@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 def configure(
     api_key: str | None = None,
     *,
+    client: Any = None,
     config: ObservabilityConfig | None = None,
     mode: ObservabilityMode | None = None,
     service_name: str | None = None,
@@ -41,9 +42,32 @@ def configure(
 ) -> None:
     """Configure bud observability. Safe to call even if OTel deps are missing.
 
+    Args:
+        api_key: Explicit API key (highest priority).
+        client: A BudClient or AsyncBudClient instance. When provided, its
+            ``api_key`` and ``base_url`` are used as defaults for
+            ``api_key`` and ``collector_endpoint`` respectively.
+        config: Pre-built ObservabilityConfig (skips env resolution).
+        mode: Override observability mode.
+        service_name: Override service name.
+        collector_endpoint: Override collector endpoint.
+        tracer_provider: Attach an external TracerProvider.
+        meter_provider: Attach an external MeterProvider.
+        logger_provider: Attach an external LoggerProvider.
+        instrumentors: List of auto-instrumentor names.
+        enabled: Enable or disable observability.
+
+    Precedence (highest to lowest):
+        1. Explicit kwargs (``api_key``, ``collector_endpoint``, etc.)
+        2. Values extracted from ``client``
+        3. ``BUD_API_KEY`` / ``BUD_BASE_URL`` environment variables
+
     Example:
+        from bud import BudClient
         from bud.observability import configure
-        configure(api_key="bud_client_xxxx")
+
+        client = BudClient(api_key="bud_client_xxxx", base_url="https://api.bud.io")
+        configure(client=client, service_name="my-service")
     """
     try:
         if not _check_otel_available():
@@ -54,6 +78,15 @@ def configure(
 
         if config is None:
             config = ObservabilityConfig._resolve_from_env()
+
+        # Extract from client if provided
+        if client is not None:
+            _client_api_key = getattr(client, "api_key", None)
+            _client_base_url = getattr(client, "base_url", None)
+            if _client_api_key and config.api_key is None:
+                config.api_key = _client_api_key
+            if _client_base_url and config.collector_endpoint is None:
+                config.collector_endpoint = _client_base_url
 
         # Override with explicit arguments
         if api_key is not None:
