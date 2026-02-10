@@ -9,6 +9,7 @@ Public API:
     extract_context()    — Extract W3C trace context from headers
     inject_context()     — Inject trace context into headers
     extract_from_request() — Extract context from Request objects
+    track_chat_completions() — Instrument client.chat.completions.create()
 """
 
 from __future__ import annotations
@@ -192,6 +193,10 @@ def __getattr__(name: str) -> Any:
         from bud.observability._track import track
 
         return track
+    if name == "track_chat_completions":
+        from bud.observability._inference_tracker import track_chat_completions
+
+        return track_chat_completions
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -211,4 +216,5 @@ __all__ = [
     "BaggageSpanProcessor",
     "TracedStream",
     "track",
+    "track_chat_completions",
 ]

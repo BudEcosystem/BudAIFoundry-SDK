@@ -1,977 +1,445 @@
-# Implementation Specification: `@track` Decorator
+# Technical Specification: `track_chat_completions()`
 
-## File 1: `src/bud/observability/_track.py` (CREATE, ~200 lines)
+## 1. API Contract
 
-### Module Docstring
-
-```python
-"""Declarative function tracing via the @track decorator.
-
-Wraps sync/async functions and generators with OTel spans.
-Automatically captures inputs, outputs, and errors as span attributes.
-
-Usage:
-    from bud.observability import track
-
-    @track
-    def my_function(x, y):
-        return x + y
-
-    @track(name="custom-name", type="llm", capture_input=True)
-    def ask(client, question):
-        return client.chat.completions.create(...)
-"""
-```
-
-### Imports
+### Function Signature
 
 ```python
-from __future__ import annotations
-
-import functools
-import inspect
-import logging
-from typing import Any, Callable, TypeVar, overload
-
-logger = logging.getLogger("bud.observability")
-
-F = TypeVar("F", bound=Callable[..., Any])
-```
-
-No OTel imports at module level. All OTel access goes through `bud.observability.get_tracer` imported inside wrapper bodies.
-
-### Constants
-
-```python
-_MAX_ATTR_LENGTH = 1000
-_SELF_CLS_NAMES = frozenset({"self", "cls"})
-```
-
----
-
-### Helper: `_safe_repr(value: Any) -> str`
-
-Truncating repr for span attributes.
-
-```python
-def _safe_repr(value: Any) -> str:
-    """Return repr(value) truncated to _MAX_ATTR_LENGTH chars."""
-    try:
-        text = repr(value)
-    except Exception:
-        text = f"<unrepresentable {type(value).__name__}>"
-    if len(text) > _MAX_ATTR_LENGTH:
-        return text[:_MAX_ATTR_LENGTH - 3] + "..."
-    return text
-```
-
----
-
-### Helper: `_is_noop() -> bool`
-
-Fast path check. Single bool read, no lock.
-
-```python
-def _is_noop() -> bool:
-    """Return True if observability is not configured (fast path)."""
-    try:
-        from bud.observability._state import _state
-        return not _state.is_configured
-    except Exception:
-        return True
-```
-
-**Note:** The `try/except` handles the edge case where `_state` import fails (e.g., corrupted install). Returns `True` (noop) on failure — never breaks user code.
-
----
-
-### Helper: `_capture_inputs(fn, args, kwargs, ignore=None) -> dict[str, str]`
-
-Uses `inspect.signature` to map positional/keyword args to parameter names.
-
-```python
-def _capture_inputs(
-    fn: Callable[..., Any],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-    ignore: list[str] | None = None,
-) -> dict[str, str]:
-    """Bind args to param names and return as bud.track.input.* attributes.
-
-    Skips 'self' and 'cls'. Applies ignore filter if provided.
-    Returns empty dict on any introspection failure.
-    """
-    try:
-        sig = inspect.signature(fn)
-        bound = sig.bind(*args, **kwargs)
-        bound.apply_defaults()
-    except (ValueError, TypeError):
-        logger.debug("Could not bind arguments for %s", getattr(fn, "__qualname__", fn))
-        return {}
-
-    attrs: dict[str, str] = {}
-    for name, value in bound.arguments.items():
-        if name in _SELF_CLS_NAMES:
-            continue
-        if ignore is not None and name in ignore:
-            continue
-        attrs[f"bud.track.input.{name}"] = _safe_repr(value)
-    return attrs
-```
-
-**Behavior:**
-- `@track` on `def foo(self, x, y)` → captures `bud.track.input.x`, `bud.track.input.y` (skips `self`)
-- `@track(ignore_arguments=["x"])` on `def foo(x, y, z)` → captures `bud.track.input.y`, `bud.track.input.z` (excludes `x`)
-- If `inspect.signature` fails (C extension, weird `__call__`) → returns `{}`, logs debug
-
----
-
-### Helper: `_capture_output(result) -> dict[str, str]`
-
-```python
-def _capture_output(result: Any) -> dict[str, str]:
-    """Convert return value to bud.track.output.* attributes.
-
-    - Dict return: all keys captured as bud.track.output.<key>
-    - Non-dict return: single bud.track.output attribute
-    """
-    if isinstance(result, dict):
-        attrs: dict[str, str] = {}
-        for key, value in result.items():
-            attrs[f"bud.track.output.{key}"] = _safe_repr(value)
-        return attrs
-    return {"bud.track.output": _safe_repr(result)}
-```
-
-**Behavior:**
-- `return {"answer": "yes", "score": 0.9}` → `bud.track.output.answer`, `bud.track.output.score`
-- `return "hello"` → `bud.track.output = "'hello'"`
-- `return 42` → `bud.track.output = "42"`
-
----
-
-### Helper: `_setup_span_attributes(span, type, static_attrs, input_attrs)`
-
-```python
-def _setup_span_attributes(
-    span: Any,
-    track_type: str | None,
-    static_attrs: dict[str, Any] | None,
-    input_attrs: dict[str, str],
-) -> None:
-    """Apply type, static, and input attributes to span."""
-    if track_type is not None:
-        span.set_attribute("bud.track.type", track_type)
-    if static_attrs:
-        for k, v in static_attrs.items():
-            span.set_attribute(k, v)
-    for k, v in input_attrs.items():
-        span.set_attribute(k, v)
-```
-
----
-
-### Helper: `_record_exception(span, exc)`
-
-```python
-def _record_exception(span: Any, exc: BaseException) -> None:
-    """Record exception on span and set ERROR status."""
-    try:
-        from opentelemetry.trace import StatusCode
-        span.record_exception(exc)
-        span.set_status(StatusCode.ERROR, str(exc))
-    except Exception:
-        # Fallback if OTel import fails — span is likely a _NoOpSpan anyway
-        pass
-```
-
----
-
-### Helper: `_set_ok_status(span)`
-
-```python
-def _set_ok_status(span: Any) -> None:
-    """Set span status to OK."""
-    try:
-        from opentelemetry.trace import StatusCode
-        span.set_status(StatusCode.OK)
-    except Exception:
-        pass
-```
-
----
-
-### Wrapper: `_wrap_sync(fn, span_name, tracer_name, capture_input, ignore_arguments, capture_output, track_type, static_attrs)`
-
-```python
-def _wrap_sync(
-    fn: Callable[..., Any],
-    span_name: str,
-    tracer_name: str,
-    capture_input: bool,
-    ignore_arguments: list[str] | None,
-    capture_output: bool,
-    track_type: str | None,
-    static_attrs: dict[str, Any] | None,
-) -> Callable[..., Any]:
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if _is_noop():
-            return fn(*args, **kwargs)
-
-        from bud.observability import get_tracer
-
-        tracer = get_tracer(tracer_name)
-        with tracer.start_as_current_span(span_name) as span:
-            input_attrs = (
-                _capture_inputs(fn, args, kwargs, ignore=ignore_arguments)
-                if capture_input
-                else {}
-            )
-            _setup_span_attributes(span, track_type, static_attrs, input_attrs)
-            try:
-                result = fn(*args, **kwargs)
-            except Exception as exc:
-                _record_exception(span, exc)
-                raise
-            if capture_output:
-                for k, v in _capture_output(result).items():
-                    span.set_attribute(k, v)
-            _set_ok_status(span)
-            return result
-
-    return wrapper
-```
-
----
-
-### Wrapper: `_wrap_async(fn, ...)`
-
-Identical structure to `_wrap_sync` but with `async def wrapper` and `await fn(...)`.
-
-```python
-def _wrap_async(
-    fn: Callable[..., Any],
-    span_name: str,
-    tracer_name: str,
-    capture_input: bool,
-    ignore_arguments: list[str] | None,
-    capture_output: bool,
-    track_type: str | None,
-    static_attrs: dict[str, Any] | None,
-) -> Callable[..., Any]:
-    @functools.wraps(fn)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if _is_noop():
-            return await fn(*args, **kwargs)
-
-        from bud.observability import get_tracer
-
-        tracer = get_tracer(tracer_name)
-        with tracer.start_as_current_span(span_name) as span:
-            input_attrs = (
-                _capture_inputs(fn, args, kwargs, ignore=ignore_arguments)
-                if capture_input
-                else {}
-            )
-            _setup_span_attributes(span, track_type, static_attrs, input_attrs)
-            try:
-                result = await fn(*args, **kwargs)
-            except Exception as exc:
-                _record_exception(span, exc)
-                raise
-            if capture_output:
-                for k, v in _capture_output(result).items():
-                    span.set_attribute(k, v)
-            _set_ok_status(span)
-            return result
-
-    return wrapper
-```
-
----
-
-### Wrapper: `_wrap_sync_generator(fn, ...)`
-
-```python
-def _wrap_sync_generator(
-    fn: Callable[..., Any],
-    span_name: str,
-    tracer_name: str,
-    capture_input: bool,
-    ignore_arguments: list[str] | None,
-    capture_output: bool,
-    generations_aggregator: Callable[[list[Any]], Any] | None,
-    track_type: str | None,
-    static_attrs: dict[str, Any] | None,
-) -> Callable[..., Any]:
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if _is_noop():
-            yield from fn(*args, **kwargs)
-            return
-
-        from bud.observability import get_tracer
-
-        tracer = get_tracer(tracer_name)
-        with tracer.start_as_current_span(span_name) as span:
-            input_attrs = (
-                _capture_inputs(fn, args, kwargs, ignore=ignore_arguments)
-                if capture_input
-                else {}
-            )
-            _setup_span_attributes(span, track_type, static_attrs, input_attrs)
-            chunk_count = 0
-            accumulated: list[Any] = []
-            completed = False
-            try:
-                for item in fn(*args, **kwargs):
-                    chunk_count += 1
-                    if capture_output:
-                        accumulated.append(item)
-                    yield item
-                completed = True
-            except GeneratorExit:
-                pass
-            except Exception as exc:
-                _record_exception(span, exc)
-                raise
-            span.set_attribute("bud.track.yield_count", chunk_count)
-            span.set_attribute("bud.track.generator_completed", completed)
-            if capture_output and accumulated:
-                try:
-                    span.set_attribute(
-                        "bud.track.output",
-                        _try_aggregate_generator(accumulated, generations_aggregator),
-                    )
-                except Exception:
-                    logger.debug("Failed to capture generator output", exc_info=True)
-            if completed:
-                _set_ok_status(span)
-
-    return wrapper
-```
-
-**Note:** Generator wrappers accept `generations_aggregator` to customize how yielded items are aggregated into the `bud.track.output` attribute. When `None`, the builtin aggregator (string-join for str chunks, list repr otherwise) is used.
-
----
-
-### Wrapper: `_wrap_async_generator(fn, ...)`
-
-Identical to sync generator but uses `async def wrapper`, `async for item in fn(...)`.
-
-```python
-def _wrap_async_generator(
-    fn: Callable[..., Any],
-    span_name: str,
-    tracer_name: str,
-    capture_input: bool,
-    ignore_arguments: list[str] | None,
-    capture_output: bool,
-    generations_aggregator: Callable[[list[Any]], Any] | None,
-    track_type: str | None,
-    static_attrs: dict[str, Any] | None,
-) -> Callable[..., Any]:
-    @functools.wraps(fn)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if _is_noop():
-            async for item in fn(*args, **kwargs):
-                yield item
-            return
-
-        from bud.observability import get_tracer
-
-        tracer = get_tracer(tracer_name)
-        with tracer.start_as_current_span(span_name) as span:
-            input_attrs = (
-                _capture_inputs(fn, args, kwargs, ignore=ignore_arguments)
-                if capture_input
-                else {}
-            )
-            _setup_span_attributes(span, track_type, static_attrs, input_attrs)
-            chunk_count = 0
-            accumulated: list[Any] = []
-            completed = False
-            try:
-                async for item in fn(*args, **kwargs):
-                    chunk_count += 1
-                    if capture_output:
-                        accumulated.append(item)
-                    yield item
-                completed = True
-            except (GeneratorExit, asyncio.CancelledError):
-                pass
-            except Exception as exc:
-                _record_exception(span, exc)
-                raise
-            span.set_attribute("bud.track.yield_count", chunk_count)
-            span.set_attribute("bud.track.generator_completed", completed)
-            if capture_output and accumulated:
-                try:
-                    span.set_attribute(
-                        "bud.track.output",
-                        _try_aggregate_generator(accumulated, generations_aggregator),
-                    )
-                except Exception:
-                    logger.debug("Failed to capture generator output", exc_info=True)
-            if completed:
-                _set_ok_status(span)
-
-    return wrapper
-```
-
----
-
-### Public API: `track()` — Decorator Factory
-
-Supports three call patterns via `@overload`:
-
-```python
-@overload
-def track(fn: F) -> F: ...                    # @track (bare)
-
-@overload
-def track(
-    fn: None = None,
+def track_chat_completions(
+    client: BudClient,
     *,
-    name: str | None = None,
-    tracer_name: str = "bud",
-    capture_input: bool = True,
-    ignore_arguments: list[str] | None = None,
-    capture_output: bool = True,
-    generations_aggregator: Callable[[list[Any]], Any] | None = None,
-    type: str | None = None,
-    attributes: dict[str, Any] | None = None,
-) -> Callable[[F], F]: ...                    # @track() or @track(name="x")
-
-def track(
-    fn: F | None = None,
-    *,
-    name: str | None = None,
-    tracer_name: str = "bud",
-    capture_input: bool = True,
-    ignore_arguments: list[str] | None = None,
-    capture_output: bool = True,
-    generations_aggregator: Callable[[list[Any]], Any] | None = None,
-    type: str | None = None,
-    attributes: dict[str, Any] | None = None,
-) -> F | Callable[[F], F]:
-    """Decorator that wraps a function with an OTel span.
-
-    Supports sync/async functions and sync/async generators.
-
-    Args:
-        fn: The function to decorate (set automatically for bare @track).
-        name: Span name. Defaults to fn.__qualname__.
-        tracer_name: OTel tracer name. Defaults to "bud".
-        capture_input: Record function args as bud.track.input.* attributes.
-        ignore_arguments: List of arg names to exclude from capture (None = capture all).
-        capture_output: Record return value as bud.track.output attribute(s).
-        generations_aggregator: Callback to aggregate generator items into a single
-            output value. Only used for generator-wrapped functions.
-        type: Sets bud.track.type attribute (e.g. "llm", "tool", "chain").
-        attributes: Static attributes added to every span invocation.
-
-    Examples:
-        @track
-        def simple(): ...
-
-        @track()
-        def also_simple(): ...
-
-        @track(name="ask-llm", type="llm", ignore_arguments=["client", "api_key"])
-        def ask(client, question, api_key): ...
-
-        @track(type="tool")
-        async def fetch_data(url): ...
-    """
-
-    def decorator(func: F) -> F:
-        span_name = name or func.__qualname__
-        is_async_gen = inspect.isasyncgenfunction(func)
-        is_sync_gen = inspect.isgeneratorfunction(func)
-        is_async = inspect.iscoroutinefunction(func)
-
-        if is_async_gen:
-            wrapped = _wrap_async_generator(
-                func, span_name, tracer_name,
-                capture_input, ignore_arguments,
-                capture_output, generations_aggregator,
-                type, attributes,
-            )
-        elif is_sync_gen:
-            wrapped = _wrap_sync_generator(
-                func, span_name, tracer_name,
-                capture_input, ignore_arguments,
-                capture_output, generations_aggregator,
-                type, attributes,
-            )
-        elif is_async:
-            wrapped = _wrap_async(
-                func, span_name, tracer_name,
-                capture_input, ignore_arguments,
-                capture_output,
-                type, attributes,
-            )
-        else:
-            wrapped = _wrap_sync(
-                func, span_name, tracer_name,
-                capture_input, ignore_arguments,
-                capture_output,
-                type, attributes,
-            )
-
-        return wrapped  # type: ignore[return-value]
-
-    # Bare @track — fn is the decorated function
-    if fn is not None:
-        return decorator(fn)
-
-    # @track() or @track(name="x") — return decorator
-    return decorator  # type: ignore[return-value]
+    capture_input: bool | list[str] = True,
+    capture_output: bool | list[str] = True,
+    span_name: str = "chat",
+) -> BudClient:
 ```
 
-**Detection logic:**
-- `@track` → Python calls `track(fn)` with the function as first positional arg → `fn is not None` → apply decorator immediately
-- `@track()` → Python calls `track()` → `fn is None` → return `decorator`
-- `@track(name="x")` → Python calls `track(name="x")` → `fn is None` → return `decorator`
+### Parameters
 
----
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `client` | `BudClient` | *(required)* | The client instance whose `chat.completions.create()` will be instrumented |
+| `capture_input` | `bool \| list[str]` | `True` | Controls which request kwargs are recorded as span attributes |
+| `capture_output` | `bool \| list[str]` | `True` | Controls which response fields are recorded as span attributes |
+| `span_name` | `str` | `"chat"` | Base span name. Streaming calls use `"{span_name}.stream"` |
 
-## File 2: `src/bud/observability/__init__.py` (MODIFY, ~5 lines)
+### Return Value
 
-### Change 1: Add to `__getattr__`
-
-**Current code (lines 188-191):**
+Returns the same `client` object (mutated in place). Enables chaining:
 ```python
-def __getattr__(name: str) -> Any:
-    if name == "TracedStream":
-        return _lazy_traced_stream()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+client = track_chat_completions(BudClient(api_key="..."))
 ```
 
-**New code:**
-```python
-def __getattr__(name: str) -> Any:
-    if name == "TracedStream":
-        return _lazy_traced_stream()
-    if name == "track":
-        from bud.observability._track import track
-        return track
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-```
-
-### Change 2: Add to `__all__`
-
-**Current code (lines 194-209):**
-```python
-__all__ = [
-    "configure",
-    "shutdown",
-    ...
-    "TracedStream",
-]
-```
-
-**New code — add `"track"` at the end:**
-```python
-__all__ = [
-    "configure",
-    "shutdown",
-    ...
-    "TracedStream",
-    "track",
-]
-```
-
----
-
-## File 3: `tests/test_observability/test_track.py` (CREATE, ~250 lines)
-
-### Test Infrastructure (module-level fixtures)
+### Type Alias
 
 ```python
-"""Tests for the @track decorator."""
-
-from __future__ import annotations
-
-import asyncio
-from unittest.mock import patch
-
-import pytest
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
-from bud.observability._track import (
-    _capture_inputs,
-    _capture_output,
-    _is_noop,
-    _safe_repr,
-    track,
-)
+FieldCapture = bool | list[str]
 ```
 
-### Fixture: `traced_setup`
+---
 
-Shared fixture that creates a TracerProvider + InMemorySpanExporter, patches `_state.is_configured = True` and `get_tracer` to return a real tracer from that provider. Yields the exporter for span inspection. Shuts down provider in teardown.
+## 2. Field Capture Semantics
+
+### Truth Table
+
+| `capture_input` / `capture_output` | Resolved Field Set | PII Captured |
+|-------------------------------------|-------------------|--------------|
+| `True` | `CHAT_SAFE_INPUT_FIELDS` / `CHAT_SAFE_OUTPUT_FIELDS` | No |
+| `False` | `None` (nothing captured) | No |
+| `["model", "temperature"]` | `frozenset({"model", "temperature"})` | Only if list includes PII fields |
+| `["model", "messages"]` | `frozenset({"model", "messages"})` | Yes — `"messages"` is PII |
+| `["usage", "content"]` | `frozenset({"usage", "content"})` | Yes — `"content"` is PII |
+
+### Resolution Function
 
 ```python
-@pytest.fixture
-def traced_setup():
-    """Provide a real TracerProvider with InMemorySpanExporter.
-
-    Patches _state.is_configured to True and get_tracer to return
-    a tracer from this provider, so @track creates real spans.
-    """
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-
-    def _get_tracer(name="bud"):
-        return provider.get_tracer(name)
-
-    with (
-        patch("bud.observability._track._is_noop", return_value=False),
-        patch("bud.observability._track.get_tracer", side_effect=_get_tracer),
-    ):
-        # Note: we patch get_tracer at the _track module level since
-        # the wrapper does `from bud.observability import get_tracer`
-        # which resolves via the module, but the deferred import inside
-        # the wrapper body means we need to patch where it's looked up.
-        yield exporter
-
-    provider.shutdown()
+def _resolve_fields(
+    capture: FieldCapture, safe_defaults: frozenset[str]
+) -> frozenset[str] | None:
+    if capture is True:
+        return safe_defaults
+    if capture is False:
+        return None
+    return frozenset(capture)
 ```
 
-**Alternative approach if the deferred import pattern makes patching tricky:** Patch `bud.observability.get_tracer` instead, since that's what the wrapper imports. Test both approaches during implementation and use whichever works.
+Resolution happens once at patch time. The resulting `frozenset` is immutable and shared across all subsequent calls.
 
 ---
 
-### Test Class: `TestSafeRepr`
+## 3. OTel Attribute Schema
 
-```
-test_short_string_unchanged         — repr("hello") stays as-is
-test_long_string_truncated          — 2000-char string truncated to 1000 with "..."
-test_unrepresentable_object         — object with broken __repr__ → "<unrepresentable ...>"
-```
+### 3.1 Request Attributes
 
----
+Extracted from `create(**kwargs)` keyword arguments via `_extract_chat_request_attrs()`.
 
-### Test Class: `TestCaptureInputs`
+| Kwarg Name | OTel Attribute Key | Value Type | Notes |
+|------------|-------------------|------------|-------|
+| `model` | `gen_ai.request.model` | `str` | |
+| `temperature` | `gen_ai.request.temperature` | `float` | |
+| `top_p` | `gen_ai.request.top_p` | `float` | |
+| `max_tokens` | `gen_ai.request.max_tokens` | `int` | |
+| `stop` | `gen_ai.request.stop_sequences` | `str` | `json.dumps()` when list |
+| `presence_penalty` | `gen_ai.request.presence_penalty` | `float` | |
+| `frequency_penalty` | `gen_ai.request.frequency_penalty` | `float` | |
+| `stream` | `bud.inference.stream` | `bool` | Also set as always-on attribute |
+| `messages` | `gen_ai.content.prompt` | `str` | **PII** — `json.dumps()` truncated to 1000 chars |
+| `tools` | *(fallback)* `bud.inference.request.tools` | `str` | `json.dumps()` truncated |
+| `tool_choice` | *(fallback)* `bud.inference.request.tool_choice` | `str` | |
+| *(other)* | `bud.inference.request.{name}` | `str` | Fallback for unmapped kwargs |
 
-```
-test_simple_args                    — def foo(x, y): ... → bud.track.input.x, bud.track.input.y
-test_skips_self                     — def foo(self, x): ... → only bud.track.input.x
-test_skips_cls                      — def foo(cls, x): ... → only bud.track.input.x
-test_include_filter                 — include=["x"] on def foo(x, y, z) → only bud.track.input.x
-test_kwargs_captured                — def foo(**kw): called with a=1 → bud.track.input.kw
-test_defaults_applied               — def foo(x, y=10): called with (1,) → captures y=10
-test_signature_failure_returns_empty — non-inspectable callable → {}
-```
-
----
-
-### Test Class: `TestCaptureOutput`
-
-```
-test_scalar_return                  — return 42 → {"bud.track.output": "42"}
-test_string_return                  — return "hi" → {"bud.track.output": "'hi'"}
-test_dict_return                    — return {"a": 1, "b": 2} → bud.track.output.a, bud.track.output.b
-test_dict_with_include              — include=["a"] → only bud.track.output.a
-test_none_return                    — return None → {"bud.track.output": "None"}
-```
-
----
-
-### Test Class: `TestTrackDecoratorPatterns`
-
-```
-test_bare_decorator                 — @track on sync function → callable, __name__ preserved
-test_empty_parens                   — @track() → same behavior
-test_parameterized                  — @track(name="x", type="llm") → callable, __name__ preserved
-test_preserves_name                 — decorated.__name__ == original.__name__
-test_preserves_doc                  — decorated.__doc__ == original.__doc__
-test_preserves_module               — decorated.__module__ == original.__module__
-test_preserves_wrapped              — decorated.__wrapped__ is original
-```
-
----
-
-### Test Class: `TestTrackNoOp`
-
-All tests verify that when `_is_noop()` returns True, the function runs normally with zero OTel overhead.
-
-```
-test_sync_noop                      — @track sync function returns correct value
-test_async_noop                     — @track async function returns correct value
-test_sync_generator_noop            — @track generator yields correct values
-test_async_generator_noop           — @track async generator yields correct values
-```
-
-Implementation pattern:
+**Attribute mapping constant:**
 ```python
-def test_sync_noop(self):
-    @track
-    def add(x, y):
-        return x + y
-
-    # _state.is_configured is False by default → noop
-    assert add(2, 3) == 5
+CHAT_INPUT_ATTR_MAP: dict[str, str] = {
+    "model": "gen_ai.request.model",
+    "temperature": "gen_ai.request.temperature",
+    "top_p": "gen_ai.request.top_p",
+    "max_tokens": "gen_ai.request.max_tokens",
+    "stop": "gen_ai.request.stop_sequences",
+    "presence_penalty": "gen_ai.request.presence_penalty",
+    "frequency_penalty": "gen_ai.request.frequency_penalty",
+    "stream": "bud.inference.stream",
+    "messages": "gen_ai.content.prompt",
+}
 ```
+
+### 3.2 Response Attributes
+
+Extracted from `ChatCompletion` response via `_extract_chat_response_attrs()`.
+
+| Response Field | OTel Attribute Key | Value Type | Source |
+|---------------|-------------------|------------|--------|
+| `id` | `gen_ai.response.id` | `str` | `response.id` |
+| `model` | `gen_ai.response.model` | `str` | `response.model` |
+| `created` | `gen_ai.response.created` | `int` | `response.created` |
+| `system_fingerprint` | `gen_ai.response.system_fingerprint` | `str` | `response.system_fingerprint` (only if non-None) |
+| `finish_reason` | `gen_ai.response.finish_reasons` | `list[str]` | `[response.choices[0].finish_reason]` |
+| `content` | `gen_ai.content.completion` | `str` | **PII** — `response.choices[0].message.content`, truncated |
+
+### 3.3 Usage Attributes
+
+Extracted from `response.usage` (or final streaming chunk's usage).
+
+| Field | OTel Attribute Key | Value Type | Source |
+|-------|-------------------|------------|--------|
+| *(when `"usage"` in fields)* | `gen_ai.usage.input_tokens` | `int` | `usage.prompt_tokens` |
+| *(when `"usage"` in fields)* | `gen_ai.usage.output_tokens` | `int` | `usage.completion_tokens` |
+
+### 3.4 Content Attributes (PII)
+
+Only captured when explicitly listed in the field set.
+
+| OTel Attribute Key | Captured When | Source | Truncation |
+|-------------------|---------------|--------|------------|
+| `gen_ai.content.prompt` | `"messages"` in input fields | `json.dumps(kwargs["messages"])` | 1000 chars |
+| `gen_ai.content.completion` | `"content"` in output fields | `response.choices[0].message.content` or joined stream deltas | 1000 chars |
+
+### 3.5 Bud-Specific Extension Attributes
+
+| OTel Attribute Key | Value Type | When Set | Description |
+|-------------------|------------|----------|-------------|
+| `bud.inference.stream` | `bool` | Always | Whether the request is streaming |
+| `bud.inference.operation` | `str` | Always | Always `"chat"` |
+| `bud.inference.ttft_ms` | `float` | Streaming only | Time-to-first-token in milliseconds |
+| `bud.inference.chunks` | `int` | Streaming only | Total chunks yielded |
+| `bud.inference.stream_completed` | `bool` | Streaming only | `True` if stream fully consumed |
+
+### 3.6 Always-On Attributes
+
+These are set on every span regardless of field capture configuration:
+
+| OTel Attribute Key | Value | Set By |
+|-------------------|-------|--------|
+| `gen_ai.system` | `"bud"` | `traced_create()` |
+| `bud.inference.operation` | `"chat"` | `traced_create()` |
+| `bud.inference.stream` | `True` / `False` | `traced_create()` |
 
 ---
 
-### Test Class: `TestTrackSpanCreation`
+## 4. Safe Default Field Sets
 
-Uses `traced_setup` fixture.
-
-```
-test_sync_creates_span              — exporter.get_finished_spans() has 1 span with correct name
-test_async_creates_span             — same for async function
-test_custom_name                    — @track(name="custom") → span.name == "custom"
-test_default_name_is_qualname       — @track → span.name == fn.__qualname__
-test_custom_tracer_name             — @track(tracer_name="my-tracer") → get_tracer called with "my-tracer"
-```
-
----
-
-### Test Class: `TestTrackNesting`
-
-Uses `traced_setup` fixture.
-
-```
-test_parent_child_relationship      — outer() calls inner() → 2 spans, inner.parent == outer
-```
-
-Implementation:
-```python
-def test_parent_child_relationship(self, traced_setup):
-    exporter = traced_setup
-
-    @track(name="outer")
-    def outer():
-        return inner()
-
-    @track(name="inner")
-    def inner():
-        return 42
-
-    result = outer()
-    assert result == 42
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 2
-
-    # Spans are exported in finish order: inner first, then outer
-    inner_span = next(s for s in spans if s.name == "inner")
-    outer_span = next(s for s in spans if s.name == "outer")
-
-    assert inner_span.parent is not None
-    assert inner_span.parent.span_id == outer_span.context.span_id
-```
-
----
-
-### Test Class: `TestTrackInputCapture`
-
-Uses `traced_setup` fixture.
-
-```
-test_captures_args                  — bud.track.input.x == repr(value)
-test_skips_self_in_method           — method on class → self not captured
-test_capture_input_false            — @track(capture_input=False) → no bud.track.input.* attrs
-test_ignore_arguments          — only listed args captured
-test_truncates_long_values          — 2000-char arg truncated to 1000
-```
-
----
-
-### Test Class: `TestTrackOutputCapture`
-
-Uses `traced_setup` fixture.
-
-```
-test_captures_scalar                — bud.track.output == repr(42)
-test_captures_dict_keys             — bud.track.output.a, bud.track.output.b
-test_capture_output_false           — @track(capture_output=False) → no bud.track.output* attrs
-test_generations_aggregator         — only listed dict keys captured
-```
-
----
-
-### Test Class: `TestTrackTypeAndAttributes`
-
-Uses `traced_setup` fixture.
-
-```
-test_type_attribute                 — @track(type="llm") → bud.track.type == "llm"
-test_static_attributes              — @track(attributes={"env": "test"}) → env == "test"
-test_no_type_no_attribute           — @track → no bud.track.type attr set
-```
-
----
-
-### Test Class: `TestTrackErrorHandling`
-
-Uses `traced_setup` fixture.
-
-```
-test_exception_recorded_and_reraised — span has exception event + ERROR status, exception propagates
-test_error_status_message           — span.status.description == str(exc)
-```
-
-Implementation:
-```python
-def test_exception_recorded_and_reraised(self, traced_setup):
-    exporter = traced_setup
-
-    @track(name="failing")
-    def failing():
-        raise ValueError("boom")
-
-    with pytest.raises(ValueError, match="boom"):
-        failing()
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    span = spans[0]
-
-    # Check ERROR status
-    from opentelemetry.trace import StatusCode
-    assert span.status.status_code == StatusCode.ERROR
-
-    # Check exception event recorded
-    events = span.events
-    assert len(events) == 1
-    assert events[0].name == "exception"
-```
-
----
-
-### Test Class: `TestTrackGenerators`
-
-Uses `traced_setup` fixture.
-
-```
-test_sync_generator_yield_count     — yields 3 items → bud.track.yield_count == 3
-test_sync_generator_mid_error       — error after 2 yields → yield_count not set, ERROR status
-test_async_generator_yield_count    — async yields 3 → bud.track.yield_count == 3
-test_generator_no_output_capture    — no bud.track.output attrs on generators
-```
-
-Implementation:
-```python
-def test_sync_generator_yield_count(self, traced_setup):
-    exporter = traced_setup
-
-    @track(name="gen")
-    def gen():
-        yield 1
-        yield 2
-        yield 3
-
-    result = list(gen())
-    assert result == [1, 2, 3]
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert dict(spans[0].attributes)["bud.track.yield_count"] == 3
-```
-
----
-
-## File 4: `examples/track_example.py` (CREATE, ~55 lines)
+### Input Fields
 
 ```python
-#!/usr/bin/env python3
-"""Simplified AI assistant example using the @track decorator.
+CHAT_SAFE_INPUT_FIELDS: frozenset[str] = frozenset({
+    "model",
+    "temperature",
+    "top_p",
+    "max_tokens",
+    "stop",
+    "presence_penalty",
+    "frequency_penalty",
+    "stream",
+    "tool_choice",
+})
+```
 
-Compare with observability_example.py which uses manual span management.
-The @track decorator reduces per-function boilerplate from ~15 lines to 1 line.
+**Excluded (PII):** `messages`, `tools`, `user`
 
-Usage:
-    BUD_API_KEY=your-key python examples/track_example.py
-"""
+### Output Fields
 
-from __future__ import annotations
+```python
+CHAT_SAFE_OUTPUT_FIELDS: frozenset[str] = frozenset({
+    "id",
+    "model",
+    "created",
+    "usage",
+    "system_fingerprint",
+    "finish_reason",
+})
+```
 
-import os
+**Excluded (PII):** `content`
 
-from bud import BudClient
-from bud.observability import configure, shutdown, track
+---
 
-BASE_URL = os.environ.get("BUD_BASE_URL", "http://localhost:56054")
-API_KEY = os.environ.get("BUD_API_KEY", "my-test-api-key")
-OTEL_ENDPOINT = os.environ.get("BUD_OTEL_ENDPOINT", "http://localhost:56056")
+## 5. Span Naming
 
+| Mode | Span Name | Example |
+|------|-----------|---------|
+| Non-streaming | `"{span_name}"` | `"chat"` |
+| Streaming | `"{span_name}.stream"` | `"chat.stream"` |
 
-@track(type="llm")
-def ask(client: BudClient, question: str) -> str:
-    """Ask a question and return the response. Automatically traced."""
-    response = client.chat.completions.create(
-        model="gpt",
-        messages=[{"role": "user", "content": question}],
-        temperature=0.3,
-        max_tokens=256,
-    )
-    return response.choices[0].message.content or ""
+The `span_name` parameter defaults to `"chat"` and can be overridden for custom naming (e.g., `"support-chat"`, `"code-gen"`).
 
+---
 
-@track(name="pipeline", type="chain")
-def pipeline(client: BudClient) -> dict[str, str]:
-    """Multi-step pipeline. Each @track call nests as a child span."""
-    summary = ask(client, "Summarize quantum computing in one sentence.")
-    followup = ask(client, f"Explain this further: {summary}")
-    return {"summary": summary, "followup": followup}
+## 6. Span Lifecycle
 
+### 6.1 Non-Streaming
 
-def main() -> None:
-    configure(service_name="track-example", collector_endpoint=OTEL_ENDPOINT)
-    client = BudClient(api_key=API_KEY, base_url=BASE_URL)
+```
+traced_create(**kwargs) called
+  │
+  ├─ _is_noop()? ──True──→ original_create(**kwargs), return result
+  │
+  ├─ create_traced_span("chat", get_tracer("bud.inference"))
+  │   → (span, context_token)
+  │
+  ├─ span.set_attribute("gen_ai.system", "bud")
+  ├─ span.set_attribute("bud.inference.operation", "chat")
+  ├─ span.set_attribute("bud.inference.stream", False)
+  │
+  ├─ _extract_chat_request_attrs(kwargs, input_fields)
+  │   → set each k,v as span attribute
+  │
+  ├─ original_create(**kwargs)
+  │   ├─ Exception? → _record_exception(span, exc)
+  │   │               span.end()
+  │   │               context.detach(token)
+  │   │               raise
+  │   └─ Success → result
+  │
+  ├─ _extract_chat_response_attrs(result, output_fields)
+  │   → set each k,v as span attribute
+  │   (wrapped in try/except — failure is debug-logged, never propagated)
+  │
+  ├─ _set_ok_status(span)
+  ├─ span.end()
+  ├─ context.detach(token)
+  └─ return result
+```
 
-    try:
-        result = pipeline(client)
-        print(f"Summary:  {result['summary']}")
-        print(f"Followup: {result['followup']}")
-    finally:
-        client.close()
-        shutdown()
+### 6.2 Streaming
 
-    print("\nDone. Check your collector for traces:")
-    print("  pipeline (root)")
-    print("    -> ask (child, question='Summarize...')")
-    print("    -> ask (child, question='Explain...')")
-
-
-if __name__ == "__main__":
-    main()
+```
+traced_create(**kwargs) called
+  │
+  ├─ (Same as non-streaming through the original_create call)
+  │
+  ├─ original_create(**kwargs) → stream_result
+  │   ├─ Exception? → same error handling as non-streaming
+  │   └─ Success → stream_result
+  │
+  └─ return TracedChatStream(stream_result, span, token, output_fields)
+      │
+      │  [span is NOT ended here — it lives until iteration completes]
+      │
+      └─ Consumer iterates via __iter__():
+           │
+           ├─ First chunk:
+           │   ├─ Record _first_chunk_time = time.monotonic()
+           │   └─ span.set_attribute("bud.inference.ttft_ms", delta_ms)
+           │
+           ├─ Each chunk:
+           │   ├─ _chunk_count += 1
+           │   ├─ _accumulated.append(chunk)
+           │   └─ yield chunk
+           │
+           ├─ Normal end:
+           │   └─ _completed = True
+           │
+           ├─ GeneratorExit:
+           │   └─ pass (partial completion)
+           │
+           ├─ Other Exception:
+           │   └─ _record_exception(span, exc), raise
+           │
+           └─ finally → _finalize():
+                ├─ if _finalized: return (guard)
+                ├─ _finalized = True
+                ├─ span.set_attribute("bud.inference.chunks", _chunk_count)
+                ├─ span.set_attribute("bud.inference.stream_completed", _completed)
+                ├─ _aggregate_stream_response(_accumulated, _output_fields)
+                │   → set each k,v as span attribute
+                ├─ if _completed: _set_ok_status(span)
+                ├─ span.end()
+                └─ context.detach(context_token)
 ```
 
 ---
 
-## Attribute Reference
+## 7. `TracedChatStream` Contract
 
-| Attribute Key | Type | When Set | Source |
-|---|---|---|---|
-| `bud.track.input.<param>` | `str` | `capture_input=True` | `inspect.signature().bind()` via `_capture_inputs()` |
-| `bud.track.output` | `str` | `capture_output=True`, non-dict return | `_capture_output()` |
-| `bud.track.output.<key>` | `str` | `capture_output=True`, dict return | `_capture_output()` |
-| `bud.track.type` | `str` | `type` parameter provided | `_setup_span_attributes()` |
-| `bud.track.yield_count` | `int` | Generator wrappers only | `_wrap_sync_generator()` / `_wrap_async_generator()` |
-| User-defined keys | `Any` | `attributes` parameter provided | `_setup_span_attributes()` |
+### Implements
 
-## Import Graph
+| Protocol Method | Behavior |
+|----------------|----------|
+| `__iter__()` | Yields `ChatCompletionChunk` objects from inner stream; records TTFT, counts chunks, accumulates for aggregation |
+| `__enter__()` | Returns `self` (context manager support) |
+| `__exit__(*args)` | Calls `self.close()` |
+| `close()` | Delegates to `self._inner.close()` (releases HTTP resources) |
+| `__del__()` | Safety net — calls `_finalize()` with warning if not already finalized |
 
+### Internal State
+
+| Field | Type | Initial | Description |
+|-------|------|---------|-------------|
+| `_inner` | `Stream[ChatCompletionChunk]` | *(from constructor)* | Original stream object |
+| `_span` | `Span` | *(from constructor)* | Manually-managed OTel span |
+| `_context_token` | `object` | *(from constructor)* | OTel context token for `context.detach()` |
+| `_output_fields` | `frozenset[str] \| None` | *(from constructor)* | Fields to extract from aggregated response |
+| `_chunk_count` | `int` | `0` | Number of chunks yielded |
+| `_accumulated` | `list[ChatCompletionChunk]` | `[]` | All chunks for post-stream aggregation |
+| `_completed` | `bool` | `False` | `True` if stream fully consumed (no early exit) |
+| `_finalized` | `bool` | `False` | Guard against double `span.end()` |
+| `_start_time` | `float` | `time.monotonic()` | Timestamp for TTFT calculation |
+| `_first_chunk_time` | `float \| None` | `None` | Timestamp of first chunk arrival |
+
+### TTFT Measurement
+
+```python
+ttft_ms = (first_chunk_time - start_time) * 1000
 ```
-bud.observability (public API)
-  └── __getattr__("track")
-        └── bud.observability._track (new module)
-              ├── inspect (stdlib, at module level)
-              ├── functools (stdlib, at module level)
-              ├── logging (stdlib, at module level)
-              └── [inside wrapper body, deferred]:
-                    ├── bud.observability.get_tracer
-                    ├── bud.observability._state._state
-                    └── opentelemetry.trace.StatusCode
+
+`start_time` is captured at `TracedChatStream.__init__()` (immediately after `create()` returns the stream object). `first_chunk_time` is captured on the first `yield` in `__iter__()`.
+
+---
+
+## 8. Error Handling Matrix
+
+| Scenario | Span Status | Exception Recorded on Span | Re-raised to Caller | `stream_completed` | Notes |
+|----------|------------|--------------------------|---------------------|-------------------|-------|
+| Non-streaming: HTTP 4xx/5xx | `ERROR` | Yes (`span.record_exception()`) | Yes | N/A | SDK raises `APIError` subclass |
+| Non-streaming: `ConnectionError` | `ERROR` | Yes | Yes | N/A | Network failure |
+| Non-streaming: `TimeoutError` | `ERROR` | Yes | Yes | N/A | Request timeout |
+| Non-streaming: success | `OK` | No | No | N/A | |
+| Streaming: `GeneratorExit` | *(unset)* | No | No | `False` | Consumer stopped early |
+| Streaming: exception mid-stream | `ERROR` | Yes | Yes | `False` | |
+| Streaming: normal completion | `OK` | No | No | `True` | |
+| Streaming: HTTP error on `create()` | `ERROR` | Yes | Yes | N/A | Error before stream starts |
+| Attribute extraction failure | *(no change)* | No | No | *(no change)* | `logger.debug()` only |
+| Stream aggregation failure | *(no change)* | No | No | *(no change)* | `logger.debug()` only |
+| OTel not installed | *(no span)* | N/A | N/A | N/A | `_is_noop()` fast path |
+
+**Invariant:** Exceptions from the user's API call are always re-raised. Tracing failures never propagate to the user.
+
+---
+
+## 9. PII Rules
+
+1. **Messages** (`gen_ai.content.prompt`) are never captured unless the user explicitly includes `"messages"` in the `capture_input` field list.
+
+2. **Completion content** (`gen_ai.content.completion`) is never captured unless the user explicitly includes `"content"` in the `capture_output` field list.
+
+3. **`True` (safe defaults)** excludes all PII fields. The safe field sets contain only metadata: model name, temperature, token counts, finish reason, etc.
+
+4. **`False`** disables all attribute capture for that direction.
+
+5. **Truncation:** When PII fields are captured, values are truncated to 1000 characters via `_safe_repr()`.
+
+6. The `"user"` kwarg (OpenAI's user identifier) is excluded from safe defaults since it may contain PII.
+
+---
+
+## 10. Thread Safety
+
+- Each call to `traced_create()` creates its own `Span` and `context_token`.
+- No shared mutable state exists between concurrent calls.
+- `_resolve_fields()` returns immutable `frozenset` objects shared safely across threads.
+- `TracedChatStream` instances are not shared between threads (each stream belongs to one consumer).
+- The `_bud_tracked` flag is set once at patch time (single-threaded setup).
+
+---
+
+## 11. Idempotency
+
+- `track_chat_completions()` checks `getattr(client.chat.completions, '_bud_tracked', False)` before patching.
+- If `True`, the function returns `client` immediately without modifying anything.
+- The flag is set to `True` after successful patching: `client.chat.completions._bud_tracked = True`.
+- This prevents double-wrapping which would create duplicate spans.
+
+---
+
+## 12. OTel Constant Definitions
+
+All constants live in `src/bud/observability/_genai_attributes.py`:
+
+```python
+# OpenTelemetry GenAI Semantic Convention constants
+# See: https://opentelemetry.io/docs/specs/semconv/gen-ai/
+
+# System
+GENAI_SYSTEM = "gen_ai.system"
+
+# Request attributes
+GENAI_REQUEST_MODEL = "gen_ai.request.model"
+GENAI_REQUEST_TEMPERATURE = "gen_ai.request.temperature"
+GENAI_REQUEST_TOP_P = "gen_ai.request.top_p"
+GENAI_REQUEST_MAX_TOKENS = "gen_ai.request.max_tokens"
+GENAI_REQUEST_STOP_SEQUENCES = "gen_ai.request.stop_sequences"
+GENAI_REQUEST_PRESENCE_PENALTY = "gen_ai.request.presence_penalty"
+GENAI_REQUEST_FREQUENCY_PENALTY = "gen_ai.request.frequency_penalty"
+
+# Response attributes
+GENAI_RESPONSE_ID = "gen_ai.response.id"
+GENAI_RESPONSE_MODEL = "gen_ai.response.model"
+GENAI_RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons"
+GENAI_RESPONSE_SYSTEM_FINGERPRINT = "gen_ai.response.system_fingerprint"
+
+# Usage attributes
+GENAI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
+GENAI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
+
+# Content attributes (PII — opt-in only)
+GENAI_CONTENT_PROMPT = "gen_ai.content.prompt"
+GENAI_CONTENT_COMPLETION = "gen_ai.content.completion"
+
+# Bud-specific extensions
+BUD_INFERENCE_STREAM = "bud.inference.stream"
+BUD_INFERENCE_TTFT_MS = "bud.inference.ttft_ms"
+BUD_INFERENCE_CHUNKS = "bud.inference.chunks"
+BUD_INFERENCE_STREAM_COMPLETED = "bud.inference.stream_completed"
+BUD_INFERENCE_OPERATION = "bud.inference.operation"
 ```
+
+---
+
+## 13. Dependencies
+
+### Required (always available)
+
+- `bud.observability._track` — `_is_noop`, `_safe_repr`, `_record_exception`, `_set_ok_status`
+- `bud.observability` — `create_traced_span`, `get_tracer`
+- `bud.client` — `BudClient` (type annotation only)
+- `bud.models.inference` — `ChatCompletion`, `ChatCompletionChunk` (type annotations and runtime access)
+
+### Optional (lazy-imported at call time)
+
+- `opentelemetry.context` — for `context.detach()`
+- `opentelemetry.trace` — for `StatusCode` (via `_record_exception` / `_set_ok_status`)
+- `json` — for `json.dumps()` when serializing messages/tools
+
+### Not Required at Module Import
+
+The module can be imported without OpenTelemetry installed. All OTel imports are deferred to call time, and `_is_noop()` prevents any OTel code from executing when the library is not configured.
