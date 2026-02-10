@@ -25,7 +25,6 @@ class TestAttachMode:
             collector_endpoint="http://localhost:4318",
             compression="none",
             tracer_provider=existing_provider,
-            instrumentors=[],
             metrics_enabled=False,
             logs_enabled=False,
         )

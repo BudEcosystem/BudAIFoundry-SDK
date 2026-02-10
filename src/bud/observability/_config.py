@@ -72,9 +72,6 @@ class ObservabilityConfig:
     compression: str = "gzip"
     tls_insecure: bool = False
 
-    # Auto-instrumentation
-    instrumentors: list[str] = field(default_factory=lambda: ["httpx"])
-
     # External providers (for ATTACH mode)
     tracer_provider: Any = None
     meter_provider: Any = None

@@ -1,7 +1,12 @@
-"""Auto-instrumentation registry with double-instrumentation guard.
+"""Explicit instrumentation helpers for FastAPI, HTTPX, etc.
 
-Supports: httpx, requests, fastapi, pydantic_ai.
-Missing dependency → debug log, skip. Failed instrumentation → warning log, continue.
+Usage:
+    from bud.observability import instrument_fastapi, instrument_httpx
+
+    configure(client=client)
+    app = FastAPI()
+    instrument_fastapi(app)
+    instrument_httpx()
 """
 
 from __future__ import annotations
@@ -12,58 +17,66 @@ from typing import Any
 logger = logging.getLogger("bud.observability")
 
 
-def _instrument_httpx(tracer_provider: Any) -> None:
-    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+def instrument_fastapi(app: Any, **kwargs: Any) -> None:
+    """Instrument a FastAPI app for distributed tracing.
 
-    if not HTTPXClientInstrumentor().is_instrumented_by_opentelemetry:
-        HTTPXClientInstrumentor().instrument(tracer_provider=tracer_provider)
+    Call after configure() and after creating the app.
+    Requires: pip install bud-sdk[observability-fastapi]
+
+    Args:
+        app: The FastAPI application instance.
+        **kwargs: Additional kwargs forwarded to
+            FastAPIInstrumentor.instrument_app().
+    """
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        from bud.observability._state import _state
+
+        FastAPIInstrumentor.instrument_app(
+            app,
+            tracer_provider=_state._tracer_provider,
+            **kwargs,
+        )
+    except ImportError:
+        logger.warning(
+            "FastAPI instrumentation not installed. "
+            "Install with: pip install bud-sdk[observability-fastapi]"
+        )
+    except Exception:
+        logger.warning("Failed to instrument FastAPI app", exc_info=True)
 
 
-def _instrument_requests(tracer_provider: Any) -> None:
-    from opentelemetry.instrumentation.requests import RequestsInstrumentor
+def instrument_httpx(client: Any = None, **kwargs: Any) -> None:
+    """Instrument httpx for distributed tracing.
 
-    if not RequestsInstrumentor().is_instrumented_by_opentelemetry:
-        RequestsInstrumentor().instrument(tracer_provider=tracer_provider)
+    Call after configure().
+    Requires: pip install bud-sdk[observability-httpx]
 
+    Args:
+        client: Optional httpx.Client or httpx.AsyncClient.
+            When None, instruments all httpx clients globally.
+            When provided, instruments only the given client.
+        **kwargs: Additional kwargs forwarded to the instrumentor.
+    """
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
-def _instrument_fastapi(tracer_provider: Any) -> None:
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from bud.observability._state import _state
 
-    if not FastAPIInstrumentor().is_instrumented_by_opentelemetry:
-        FastAPIInstrumentor().instrument(tracer_provider=tracer_provider)
-
-
-def _instrument_pydantic_ai(tracer_provider: Any) -> None:
-    from opentelemetry.instrumentation.pydantic_ai import PydanticAIInstrumentor
-
-    if not PydanticAIInstrumentor().is_instrumented_by_opentelemetry:
-        PydanticAIInstrumentor().instrument(tracer_provider=tracer_provider)
-
-
-class InstrumentorRegistry:
-    """Registry of auto-instrumentors with double-instrumentation guard."""
-
-    _REGISTRY: dict[str, Any] = {
-        "httpx": _instrument_httpx,
-        "requests": _instrument_requests,
-        "fastapi": _instrument_fastapi,
-        "pydantic_ai": _instrument_pydantic_ai,
-    }
-
-    @classmethod
-    def register_all(cls, names: list[str], tracer_provider: Any) -> list[str]:
-        """Enable requested instrumentors, returning list of actually enabled ones."""
-        enabled: list[str] = []
-        for name in names:
-            handler = cls._REGISTRY.get(name)
-            if handler is None:
-                logger.debug("Instrumentor '%s' not in registry, skipping", name)
-                continue
-            try:
-                handler(tracer_provider)
-                enabled.append(name)
-            except ImportError:
-                logger.debug("Instrumentor '%s' skipped: dependency not installed", name)
-            except Exception as exc:
-                logger.warning("Instrumentor '%s' failed: %s", name, exc)
-        return enabled
+        instrumentor = HTTPXClientInstrumentor()
+        if client is None:
+            instrumentor.instrument(
+                tracer_provider=_state._tracer_provider, **kwargs
+            )
+        else:
+            instrumentor.instrument_client(
+                client, tracer_provider=_state._tracer_provider, **kwargs
+            )
+    except ImportError:
+        logger.warning(
+            "HTTPX instrumentation not installed. "
+            "Install with: pip install bud-sdk[observability-httpx]"
+        )
+    except Exception:
+        logger.warning("Failed to instrument httpx", exc_info=True)

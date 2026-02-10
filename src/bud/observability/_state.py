@@ -69,19 +69,6 @@ class _ObservabilityState:
             self._owned_providers = bundle.owned
             self._config = config
 
-            # Run auto-instrumentors
-            if bundle.tracer_provider and config.instrumentors:
-                try:
-                    from bud.observability._instrumentors import InstrumentorRegistry
-
-                    enabled = InstrumentorRegistry.register_all(
-                        config.instrumentors, bundle.tracer_provider
-                    )
-                    if enabled:
-                        logger.info("Auto-instrumentors enabled: %s", ", ".join(enabled))
-                except Exception:
-                    logger.debug("Auto-instrumentation failed", exc_info=True)
-
             self._is_configured = True
             logger.info("Observability configured successfully")
 

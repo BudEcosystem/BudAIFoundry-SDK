@@ -33,7 +33,6 @@ class TestObservabilityConfig:
         assert config.metrics_enabled is True
         assert config.logs_enabled is True
         assert config.compression == "gzip"
-        assert config.instrumentors == ["httpx"]
         assert config.batch_max_queue_size == 2048
         assert config.batch_max_export_size == 512
         assert config.batch_schedule_delay_ms == 5000

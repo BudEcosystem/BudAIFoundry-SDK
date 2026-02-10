@@ -18,6 +18,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from bud.observability._config import ObservabilityConfig, ObservabilityMode
+from bud.observability._instrumentors import instrument_fastapi, instrument_httpx
 from bud.observability._noop import _check_otel_available, _NoOpMeter, _NoOpTracer
 
 logger = logging.getLogger("bud.observability")
@@ -37,7 +38,6 @@ def configure(
     tracer_provider: Any = None,
     meter_provider: Any = None,
     logger_provider: Any = None,
-    instrumentors: list[str] | None = None,
     enabled: bool = True,
 ) -> None:
     """Configure bud observability. Safe to call even if OTel deps are missing.
@@ -54,7 +54,6 @@ def configure(
         tracer_provider: Attach an external TracerProvider.
         meter_provider: Attach an external MeterProvider.
         logger_provider: Attach an external LoggerProvider.
-        instrumentors: List of auto-instrumentor names.
         enabled: Enable or disable observability.
 
     Precedence (highest to lowest):
@@ -103,8 +102,6 @@ def configure(
             config.meter_provider = meter_provider
         if logger_provider is not None:
             config.logger_provider = logger_provider
-        if instrumentors is not None:
-            config.instrumentors = instrumentors
         config.enabled = enabled
 
         from bud.observability._state import _state
@@ -244,6 +241,8 @@ __all__ = [
     "extract_from_request",
     "create_traced_span",
     "get_current_span",
+    "instrument_fastapi",
+    "instrument_httpx",
     "ObservabilityConfig",
     "ObservabilityMode",
     "BaggageSpanProcessor",

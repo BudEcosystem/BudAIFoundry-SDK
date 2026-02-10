@@ -48,7 +48,6 @@ class TestCreateProviders:
             traces_enabled=True,
             metrics_enabled=False,
             logs_enabled=False,
-            instrumentors=[],
         )
         bundle = create_providers(config)
         assert bundle.tracer_provider is not None
@@ -64,7 +63,6 @@ class TestCreateProviders:
             traces_enabled=False,
             metrics_enabled=True,
             logs_enabled=False,
-            instrumentors=[],
         )
         bundle = create_providers(config)
         assert bundle.meter_provider is not None
@@ -80,7 +78,6 @@ class TestCreateProviders:
             traces_enabled=False,
             metrics_enabled=False,
             logs_enabled=False,
-            instrumentors=[],
         )
         bundle = create_providers(config)
         assert bundle.tracer_provider is None

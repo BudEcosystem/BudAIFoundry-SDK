@@ -68,7 +68,6 @@ class TestObservabilityState:
             traces_enabled=True,
             metrics_enabled=False,
             logs_enabled=False,
-            instrumentors=[],
         )
         state.configure(config)
         assert state.is_configured is True

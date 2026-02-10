@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""FastAPI auto-instrumentation with Bud SDK observability.
+"""FastAPI instrumentation with Bud SDK observability.
 
-Demonstrates how ``configure(instrumentors=["fastapi", "httpx"])`` enables
-automatic distributed tracing for a FastAPI service — no ``@track`` or manual
-spans required for basic coverage.  The example also shows how ``@track`` and
-manual spans nest cleanly under the auto-created route spans.
+Demonstrates explicit per-app instrumentation using ``instrument_fastapi(app)``
+and ``instrument_httpx()`` for automatic distributed tracing in a FastAPI
+service.  The ``@track`` decorator and manual spans nest cleanly under the
+auto-created route spans.
 
 Trace tree produced (for ``POST /chat``)::
 
@@ -55,10 +55,19 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
 from bud import BudClient
-from bud.observability import configure, extract_from_request, get_tracer, shutdown, track
+from bud.observability import (
+    configure,
+    extract_from_request,
+    get_tracer,
+    instrument_fastapi,
+    instrument_httpx,
+    shutdown,
+    track,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -67,18 +76,13 @@ BASE_URL = os.environ.get("BUD_BASE_URL", "http://localhost:56054")
 API_KEY = os.environ.get("BUD_API_KEY", "my-test-api-key")
 
 # ---------------------------------------------------------------------------
-# Observability — call configure() BEFORE importing FastAPI.
-# The FastAPI instrumentor monkey-patches ``fastapi.FastAPI``, so we must
-# import FastAPI *after* configure() to pick up the patched class.
+# Observability — call configure() first, then instrument explicitly
 # ---------------------------------------------------------------------------
 client = BudClient(api_key=API_KEY, base_url=BASE_URL)
 configure(
     client=client,
     service_name="fastapi-instrumented-example",
-    instrumentors=["fastapi", "httpx"],
 )
-
-from fastapi import FastAPI, Request  # noqa: E402 — must be after configure()
 
 
 @asynccontextmanager
@@ -92,6 +96,8 @@ async def lifespan(app: FastAPI):
 # App and tracer
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Instrumented Chat Service", lifespan=lifespan)
+instrument_fastapi(app)  # explicit — injects OpenTelemetryMiddleware
+instrument_httpx()  # global httpx instrumentation
 tracer = get_tracer("chat-service")
 
 
