@@ -1,479 +1,240 @@
-# Implementation Plan: `track_chat_completions()`
+# Plan: v1/responses Endpoint Support with OTel Observability
 
-## 1. Overview
+## Overview
 
-`track_chat_completions()` adds OpenTelemetry-based observability to the BudAIFoundry SDK's chat completions API. It monkey-patches `client.chat.completions.create()` with an instrumented wrapper that:
+Add support for the OpenAI Responses API (`/v1/responses`) to the BudAI SDK, including both sync and async clients, streaming support, and full OTel observability instrumentation via `track_responses()`.
 
-- Creates OTel spans for every chat completion call (streaming and non-streaming)
-- Records request parameters, response metadata, and token usage as span attributes
-- Follows [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
-- Provides configurable field capture with PII-safe defaults
-- Measures Time-To-First-Token (TTFT) for streaming responses
-- Integrates with the existing `@track` decorator via OTel context propagation
+## Scope
 
-The goal is zero-effort observability: one function call instruments all chat completions with production-safe defaults, while giving advanced users full control over what is captured.
+### New Files
+- `src/bud/_response_streaming.py` — `ResponseStream` + `AsyncResponseStream`
+- `src/bud/observability/_responses_tracker.py` — `track_responses()` + `TracedResponseStream`
+- `tests/unit/test_responses.py` — Resource unit tests
+- `tests/unit/test_response_streaming.py` — Streaming unit tests
+- `tests/test_observability/test_responses_tracker.py` — Tracker unit tests
+- `tests/test_observability/test_responses_integration.py` — Integration tests
+
+### Modified Files
+- `pyproject.toml` — Add `openai>=1.90.0` dependency
+- `src/bud/_http.py` — Add `async_stream()` to `AsyncHttpClient`
+- `src/bud/resources/inference.py` — Add `Responses` + `AsyncResponses` classes
+- `src/bud/resources/__init__.py` — Export new classes
+- `src/bud/client.py` — Wire `client.responses` into both clients
+- `src/bud/observability/_genai_attributes.py` — Add Responses API constants
+- `src/bud/observability/__init__.py` — Register `track_responses`
 
 ---
 
-## 2. Public API
+## Files to Modify
 
-### Function Signature
+### 1. `pyproject.toml`
+- Add `"openai>=1.90.0"` to `dependencies` array (line 36-44)
+- This provides `openai.types.responses.Response`, `ResponseStreamEvent`, etc.
+
+### 2. `src/bud/_http.py`
+- Add `async_stream()` method to `AsyncHttpClient` (after line 364), mirroring sync `HttpClient.stream()`:
+  - Use `@asynccontextmanager`
+  - Use `self._client.stream(method, path, json=json, headers=headers, timeout=stream_timeout)` as async context manager
+  - Check `response.is_success` before yielding
+  - Set `Accept: text/event-stream` header and extended timeouts
+
+### 3. `src/bud/_response_streaming.py` *(NEW)*
+- `ResponseStream` — sync SSE stream for Responses API
+  - Reuses `SSEParser` from `_streaming.py`
+  - Uses `pydantic.TypeAdapter(ResponseStreamEvent)` to parse the discriminated union of 53 event types
+  - Captures `response.completed` event's `Response` object in `self._completed_response` property
+  - Handles both `[DONE]` sentinel and natural stream close
+  - Context manager support (`__enter__`/`__exit__`)
+- `AsyncResponseStream` — async version
+  - Same design but uses `async for line in response.aiter_lines()`
+  - Implements `__aiter__` instead of `__iter__`
+
+### 4. `src/bud/resources/inference.py`
+Add two new resource classes after existing code:
+
+- **`Responses(SyncResource)`** with:
+  - `create(*, model=None, input=None, stream=False, instructions=None, previous_response_id=None, temperature=None, top_p=None, max_output_tokens=None, tools=None, tool_choice=None, parallel_tool_calls=None, reasoning=None, metadata=None, user=None, prompt=None, store=None, background=None, service_tier=None, text=None, truncation=None, include=None) -> Response | ResponseStream`
+  - Overloads for `stream: Literal[False]` -> `Response` and `stream: Literal[True]` -> `ResponseStream`
+  - Validates that at least one of `model` or `prompt` is provided
+  - Non-streaming: `self._http.post("/v1/responses", json=payload)` -> `Response.model_validate(data)`
+  - Streaming: `self._http.stream("POST", "/v1/responses", json=payload)` -> `ResponseStream(...)`
+
+- **`AsyncResponses(AsyncResource)`** with:
+  - `async create(...)` same signature
+  - Non-streaming: `await self._http.post("/v1/responses", json=payload)` -> `Response.model_validate(data)`
+  - Streaming: `self._http.async_stream(...)` -> `AsyncResponseStream(...)`
+
+### 5. `src/bud/resources/__init__.py`
+- Add `Responses, AsyncResponses` to imports from `inference`
+- Add to `__all__`
+
+### 6. `src/bud/client.py`
+- Import `Responses` and `AsyncResponses` from `bud.resources.inference`
+- **BudClient.__init__** (line ~163): add `self.responses = Responses(self._http)`
+- **AsyncBudClient.__init__** (line ~371): add `self.responses = AsyncResponses(self._http)`
+
+### 7. `src/bud/observability/_genai_attributes.py`
+Add new constant block after existing chat constants:
 
 ```python
-def track_chat_completions(
-    client: BudClient,
-    *,
-    capture_input: bool | list[str] = True,
-    capture_output: bool | list[str] = True,
-    span_name: str = "chat",
-) -> BudClient:
+# Responses API attributes
+GENAI_OPERATION_NAME = "gen_ai.operation.name"
+GENAI_CONVERSATION_ID = "gen_ai.conversation.id"
+GENAI_RESPONSE_STATUS = "gen_ai.response.status"
+BUD_INFERENCE_RESPONSE_OUTPUT_TEXT = "bud.inference.response.output_text"
+BUD_RESPONSES_REQUEST_INPUT = "bud.inference.request.input"
+BUD_RESPONSES_REQUEST_INSTRUCTIONS = "bud.inference.request.instructions"
+BUD_RESPONSES_REQUEST_PROMPT = "bud.inference.request.prompt"
+
+RESPONSES_INPUT_ATTR_MAP: dict[str, str] = { ... }
+RESPONSES_DEFAULT_INPUT_FIELDS: frozenset[str] = frozenset({ ... })
+RESPONSES_DEFAULT_OUTPUT_FIELDS: frozenset[str] = frozenset({ ... })
+RESPONSES_SAFE_INPUT_FIELDS = RESPONSES_DEFAULT_INPUT_FIELDS
+RESPONSES_SAFE_OUTPUT_FIELDS = RESPONSES_DEFAULT_OUTPUT_FIELDS
 ```
 
-### Usage Examples
+### 8. `src/bud/observability/_responses_tracker.py` *(NEW)*
+Following the exact pattern of `_inference_tracker.py`:
 
-**Example 1: Safe defaults (no PII captured)**
-```python
-from bud import BudClient
-from bud.observability import track_chat_completions
+- **`track_responses(client, *, capture_input=True, capture_output=True, span_name="responses") -> BudClient`**
+  - Idempotency guard via `client.responses._bud_tracked`
+  - Monkey-patches `client.responses.create`
+  - Sets always-on attributes: `gen_ai.system=bud`, `bud.inference.operation=responses`, `gen_ai.operation.name=responses`
+  - Maps `previous_response_id` -> `gen_ai.conversation.id`
 
-client = BudClient(api_key="bud_xxxx")
-track_chat_completions(client)
+- **`_extract_responses_request_attrs(kwargs, fields)`** — maps create() kwargs to OTel attributes. Serializes complex types (input lists, tools, prompt dicts) as JSON strings.
 
-response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": "Hello!"}],
-)
-# Span attributes: model, temperature, usage, finish_reason, id, etc.
-# Messages and content are NOT captured.
-```
+- **`_extract_responses_response_attrs(response, fields)`** — extracts from `openai.types.responses.Response`:
+  - `id` -> `gen_ai.response.id`
+  - `model` -> `gen_ai.response.model`
+  - `status` -> `gen_ai.response.status`
+  - `created_at` -> `gen_ai.response.created` (float)
+  - `usage.input_tokens/output_tokens/total_tokens` -> standard OTel token attrs
+  - `output_text` -> `bud.inference.response.output_text`
 
-**Example 2: Opt into PII capture**
-```python
-track_chat_completions(
-    client,
-    capture_input=["model", "messages"],      # "messages" opts into prompt capture
-    capture_output=["usage", "content"],       # "content" opts into completion capture
-)
-```
+- **`TracedResponseStream`** — wrapper for streaming with span lifecycle:
+  - TTFT tracking on first event
+  - Chunk counting
+  - On finalization: reads `self._inner.completed_response` (the full Response from `response.completed` SSE event) for usage/output extraction
+  - No need for chunk-by-chunk aggregation (unlike chat completions) — the `response.completed` event has everything
 
-**Example 3: Capture nothing (span-only, no attributes)**
-```python
-track_chat_completions(client, capture_input=False, capture_output=False)
-```
+### 9. `src/bud/observability/__init__.py`
+- Add `track_responses` to `__getattr__` lazy loader
+- Add `track_responses` to `__all__`
+- Update module docstring to mention `track_responses()`
 
 ---
 
-## 3. Three-Mode Field Capture
+## Files to Create (Tests)
 
-The `capture_input` and `capture_output` parameters accept `True | False | list[str]`:
+### 10. `tests/unit/test_responses.py`
+Test `Responses.create()`:
+- Non-streaming: mock POST, verify `Response` returned with correct fields
+- Streaming: mock SSE POST, verify `ResponseStream` yields event subtypes
+- All optional params present in payload
+- `prompt` parameter pass-through
+- Validation: neither `model` nor `prompt` -> ValueError
+- Error mapping (401, 404, 422, 429, 500)
 
-| Value | Behavior | Resulting Field Set |
-|-------|----------|-------------------|
-| `True` | Safe defaults — no PII fields | `CHAT_SAFE_INPUT_FIELDS` or `CHAT_SAFE_OUTPUT_FIELDS` |
-| `False` | Capture nothing | `None` |
-| `list[str]` | Capture exactly these fields | `frozenset(list)` |
+### 11. `tests/unit/test_response_streaming.py`
+Test `ResponseStream` and `AsyncResponseStream`:
+- Basic iteration yields correctly-typed `ResponseStreamEvent` subtypes
+- `completed_response` property captured from `response.completed` event
+- `[DONE]` sentinel handling
+- Stream close without `[DONE]`
+- JSON parse error -> logged and skipped
+- Validation error -> logged and skipped
+- Context manager cleanup
 
-**PII rule:** The fields `"messages"` (input) and `"content"` (output) are never included in safe defaults. Users must explicitly list them to opt in.
+### 12. `tests/test_observability/test_responses_tracker.py`
+Unit tests mirroring `test_inference_tracker.py`:
+- `_resolve_fields` for True/False/list
+- `_extract_responses_request_attrs` for all parameter types
+- `_extract_responses_response_attrs` for full/partial/None fields
+- `track_responses` idempotency
+- Attribute mapping correctness
 
-**Type alias:**
-```python
-FieldCapture = bool | list[str]
+### 13. `tests/test_observability/test_responses_integration.py`
+Integration tests mirroring `test_inference_integration.py`:
+- Non-streaming span with correct attributes and status
+- Streaming span with TTFT, chunk count, stream_completed
+- Error span recorded and reraised
+- Partial streaming (early break)
+- Selective field capture
+- `capture_input=False, capture_output=False`
+- Parent-child span nesting with `@track`
+
+---
+
+## Key Design Details
+
+### Streaming Architecture
+
+The Responses API SSE format uses named events:
+```
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Hello","item_id":"item_1",...}
+
+event: response.completed
+data: {"type":"response.completed","response":{...full Response with usage...}}
 ```
 
-**Resolution function:**
-```python
-def _resolve_fields(
-    capture: FieldCapture, safe_defaults: frozenset[str]
-) -> frozenset[str] | None:
-    if capture is True:
-        return safe_defaults
-    if capture is False:
-        return None
-    return frozenset(capture)
+The existing `SSEParser` in `_streaming.py` already parses both `event:` and `data:` fields correctly. The `ResponseStream` reuses `SSEParser` and uses `pydantic.TypeAdapter(ResponseStreamEvent)` to parse the discriminated union (53 event types, discriminated by `type` field in the JSON data).
+
+**Key insight:** The `response.completed` event contains the full `Response` object with `usage` data. The `ResponseStream` captures this in `self._completed_response` so observability can extract token counts without reconstructing from deltas.
+
+### Why not extend existing `Stream[T]`?
+
+The existing `Stream[T]` assumes a single model class for all events. The Responses API yields a discriminated union of 53 types. Creating a separate `ResponseStream` keeps both implementations simple and independent.
+
+### Async Streaming
+
+`AsyncHttpClient` currently lacks a `stream()` method. We add `async_stream()` as an `@asynccontextmanager` that uses `httpx.AsyncClient.stream()`. The `AsyncResponseStream` mirrors `ResponseStream` but uses `async for line in response.aiter_lines()`.
+
+### openai Types Used
+
+All from `openai.types.responses`:
+- `Response` — non-streaming return type (Pydantic v2 model with `output_text` property)
+- `ResponseStreamEvent` — discriminated union type alias for 53 event types
+- `ResponseCompletedEvent` — has `response: Response` field
+- `ResponseTextDeltaEvent` — has `delta: str` field
+- `ResponseUsage` — `input_tokens`, `output_tokens`, `total_tokens` + details
+
+---
+
+## Implementation Order
+
+1. `pyproject.toml` — add openai dep
+2. `src/bud/_http.py` — add `async_stream()` to `AsyncHttpClient`
+3. `src/bud/_response_streaming.py` — `ResponseStream` + `AsyncResponseStream`
+4. `src/bud/resources/inference.py` — `Responses` + `AsyncResponses` classes
+5. `src/bud/resources/__init__.py` — exports
+6. `src/bud/client.py` — wire into BudClient + AsyncBudClient
+7. `tests/unit/test_responses.py` — resource tests
+8. `tests/unit/test_response_streaming.py` — streaming tests
+9. `src/bud/observability/_genai_attributes.py` — add constants
+10. `src/bud/observability/_responses_tracker.py` — tracker
+11. `src/bud/observability/__init__.py` — register
+12. `tests/test_observability/test_responses_tracker.py` — tracker unit tests
+13. `tests/test_observability/test_responses_integration.py` — integration tests
+
+## Verification
+
+```bash
+cd /home/budadmin/varunsr/BudAIFoundry-SDK
+
+# Run all tests
+python3 -m pytest tests/ -v
+
+# Run only new tests
+python3 -m pytest tests/unit/test_responses.py tests/unit/test_response_streaming.py tests/test_observability/test_responses_tracker.py tests/test_observability/test_responses_integration.py -v
+
+# Run existing tests to verify no regressions
+python3 -m pytest tests/unit/test_client.py tests/test_observability/ -v
+
+# Type check
+mypy src/bud/resources/inference.py src/bud/_response_streaming.py src/bud/observability/_responses_tracker.py
+
+# Lint
+ruff check src/bud/ tests/
 ```
-
-Field resolution happens once at patch time, not per call.
-
----
-
-## 4. File Changes
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/bud/observability/_genai_attributes.py` | **Create** | OTel GenAI semantic convention constants, safe field sets, attribute mapping |
-| `src/bud/observability/_inference_tracker.py` | **Create** | Core implementation: field resolution, attribute extraction, `TracedChatStream`, `track_chat_completions()` |
-| `src/bud/observability/__init__.py` | **Modify** | Add lazy import for `track_chat_completions` in `__getattr__`, add to `__all__`, update module docstring |
-| `examples/observability/track_inference.py` | **Create** | Example script demonstrating all usage patterns |
-
----
-
-## 5. Module Structure
-
-### `_genai_attributes.py`
-
-Contains only constants — no logic, no imports beyond builtins.
-
-```
-_genai_attributes.py
-├── GenAI request constants (GENAI_REQUEST_MODEL, GENAI_REQUEST_TEMPERATURE, ...)
-├── GenAI response constants (GENAI_RESPONSE_ID, GENAI_RESPONSE_MODEL, ...)
-├── GenAI usage constants (GENAI_USAGE_INPUT_TOKENS, GENAI_USAGE_OUTPUT_TOKENS)
-├── GenAI content constants (GENAI_CONTENT_PROMPT, GENAI_CONTENT_COMPLETION)
-├── Bud-specific constants (BUD_INFERENCE_STREAM, BUD_INFERENCE_TTFT_MS, ...)
-├── CHAT_INPUT_ATTR_MAP: dict[str, str]   — kwarg name → OTel attribute key
-├── CHAT_SAFE_INPUT_FIELDS: frozenset[str] — safe default input fields
-└── CHAT_SAFE_OUTPUT_FIELDS: frozenset[str] — safe default output fields
-```
-
-### `_inference_tracker.py`
-
-Contains all logic. Internal functions are prefixed with `_`.
-
-```
-_inference_tracker.py
-├── FieldCapture          — type alias: bool | list[str]
-├── _resolve_fields()     — resolve capture config → frozenset | None
-├── _extract_chat_request_attrs()  — kwargs dict → span attribute dict
-├── _extract_chat_response_attrs() — ChatCompletion → span attribute dict
-├── _aggregate_stream_response()   — list[ChatCompletionChunk] → span attribute dict
-├── TracedChatStream      — streaming wrapper class with span lifecycle
-└── track_chat_completions()       — public API, monkey-patches client
-```
-
----
-
-## 6. Key Functions
-
-### `_resolve_fields(capture, safe_defaults) -> frozenset[str] | None`
-
-- **Input:** `capture: FieldCapture`, `safe_defaults: frozenset[str]`
-- **Output:** `frozenset[str]` of fields to capture, or `None` if capture is disabled
-- **Called:** Once at patch time (not per request)
-
-### `_extract_chat_request_attrs(kwargs, fields) -> dict[str, Any]`
-
-- **Input:** `kwargs: dict[str, Any]` (the `**kwargs` passed to `create()`), `fields: frozenset[str] | None`
-- **Output:** `dict[str, Any]` mapping OTel attribute keys to values
-- **Logic:**
-  - If `fields is None`: return `{}`
-  - For each kwarg name in `fields ∩ kwargs.keys()`:
-    - Look up OTel key in `CHAT_INPUT_ATTR_MAP`
-    - `"messages"` / `"tools"` → `json.dumps(value)` truncated via `_safe_repr()`
-    - `"stop"` when list → `json.dumps(value)`
-    - Scalar values → stored directly
-    - No mapping found → `bud.inference.request.{name}`
-- **Always-on attributes** (`gen_ai.system`, `bud.inference.operation`) are set on the span directly by the caller, not by this function.
-
-### `_extract_chat_response_attrs(response, fields) -> dict[str, Any]`
-
-- **Input:** `response: ChatCompletion`, `fields: frozenset[str] | None`
-- **Output:** `dict[str, Any]` mapping OTel attribute keys to values
-- **Mapping:**
-  - `"id"` → `gen_ai.response.id` (from `response.id`)
-  - `"model"` → `gen_ai.response.model` (from `response.model`)
-  - `"created"` → `gen_ai.response.created` (from `response.created`)
-  - `"system_fingerprint"` → `gen_ai.response.system_fingerprint` (only if non-None)
-  - `"usage"` → `gen_ai.usage.input_tokens` + `gen_ai.usage.output_tokens` (from `response.usage.prompt_tokens` / `completion_tokens`)
-  - `"finish_reason"` → `gen_ai.response.finish_reasons = [reason]` (from `response.choices[0].finish_reason`)
-  - `"content"` → `gen_ai.content.completion` (PII: from `response.choices[0].message.content`, truncated)
-
-### `_aggregate_stream_response(chunks, fields) -> dict[str, Any]`
-
-- **Input:** `chunks: list[ChatCompletionChunk]`, `fields: frozenset[str] | None`
-- **Output:** `dict[str, Any]` mapping OTel attribute keys to values
-- **Logic:**
-  - `"id"`: first chunk with an `id`
-  - `"model"`: first chunk with a `model`
-  - `"system_fingerprint"`: first chunk with non-None `system_fingerprint`
-  - `"finish_reason"`: chunk with non-None `finish_reason` in `choices[0]`
-  - `"usage"`: search in reverse order via `reversed(chunks)` — some providers send usage in the final chunk. Access via `getattr(chunk, "usage", None)`
-  - `"content"`: join all `delta.content` strings AND all `delta.reasoning_content` strings (for reasoning models like o1), then truncate via `_safe_repr()`
-
----
-
-## 7. `TracedChatStream` Class Design
-
-`TracedChatStream` is a drop-in wrapper for `Stream[ChatCompletionChunk]` that manages span lifecycle across the streaming iteration.
-
-```python
-class TracedChatStream:
-    def __init__(self, inner, span, context_token, output_fields):
-        self._inner = inner                          # Original Stream object
-        self._span = span                            # OTel Span (manually managed)
-        self._context_token = context_token          # OTel context token for detach
-        self._output_fields = output_fields          # frozenset | None
-        self._chunk_count = 0                        # int
-        self._accumulated: list[ChatCompletionChunk] = []
-        self._completed = False                      # True if stream fully consumed
-        self._finalized = False                      # Guard against double-end
-        self._start_time = time.monotonic()
-        self._first_chunk_time: float | None = None
-
-    def __iter__(self):
-        try:
-            for chunk in self._inner:
-                if self._first_chunk_time is None:
-                    self._first_chunk_time = time.monotonic()
-                    self._span.set_attribute(
-                        BUD_INFERENCE_TTFT_MS,
-                        (self._first_chunk_time - self._start_time) * 1000,
-                    )
-                self._chunk_count += 1
-                self._accumulated.append(chunk)
-                yield chunk
-            self._completed = True
-        except GeneratorExit:
-            pass  # Consumer stopped early — partial completion
-        except Exception as exc:
-            _record_exception(self._span, exc)
-            raise
-        finally:
-            self._finalize()
-
-    def _finalize(self):
-        if self._finalized:
-            return
-        self._finalized = True
-
-        self._span.set_attribute(BUD_INFERENCE_CHUNKS, self._chunk_count)
-        self._span.set_attribute(BUD_INFERENCE_STREAM_COMPLETED, self._completed)
-
-        if self._accumulated:
-            try:
-                for k, v in _aggregate_stream_response(
-                    self._accumulated, self._output_fields
-                ).items():
-                    self._span.set_attribute(k, v)
-            except Exception:
-                logger.debug("Failed to aggregate stream response", exc_info=True)
-
-        if self._completed:
-            _set_ok_status(self._span)
-
-        self._span.end()
-        if self._context_token is not None:
-            context.detach(self._context_token)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-
-    def close(self):
-        self._inner.close()
-
-    def __del__(self):
-        if not self._finalized:
-            logger.warning("TracedChatStream was garbage-collected without iteration")
-            self._finalize()
-```
-
-**Key properties:**
-- TTFT measured via `time.monotonic()` difference on first chunk
-- All chunks accumulated for post-stream aggregation (in `_finalize()`)
-- `_finalized` guard prevents double-ending the span
-- `__del__` safety net ensures the span is ended even if the stream is never iterated
-- `close()` delegates to the inner stream (releases HTTP resources)
-- `GeneratorExit` is caught and treated as partial completion (not an error)
-
----
-
-## 8. `track_chat_completions()` — 5-Step Monkey-Patch Flow
-
-```python
-def track_chat_completions(client, *, capture_input=True, capture_output=True, span_name="chat"):
-    # Step 1: Idempotency guard
-    if getattr(client.chat.completions, '_bud_tracked', False):
-        return client
-
-    # Step 2: Save original method reference
-    original_create = client.chat.completions.create
-
-    # Step 3: Resolve field sets (once at patch time)
-    input_fields = _resolve_fields(capture_input, CHAT_SAFE_INPUT_FIELDS)
-    output_fields = _resolve_fields(capture_output, CHAT_SAFE_OUTPUT_FIELDS)
-
-    # Step 4: Define wrapper
-    def traced_create(**kwargs):
-        # Fast path: skip if observability not configured
-        if _is_noop():
-            return original_create(**kwargs)
-
-        is_streaming = kwargs.get("stream", False)
-        effective_span_name = f"{span_name}.stream" if is_streaming else span_name
-
-        # Create span with manual lifecycle management
-        span, token = create_traced_span(effective_span_name, get_tracer("bud.inference"))
-
-        # Set always-on attributes
-        span.set_attribute(GENAI_SYSTEM, "bud")
-        span.set_attribute(BUD_INFERENCE_OPERATION, "chat")
-        span.set_attribute(BUD_INFERENCE_STREAM, is_streaming)
-
-        # Extract and set request attributes
-        for k, v in _extract_chat_request_attrs(kwargs, input_fields).items():
-            span.set_attribute(k, v)
-
-        # Call original
-        try:
-            result = original_create(**kwargs)
-        except Exception as exc:
-            _record_exception(span, exc)
-            span.end()
-            context.detach(token)
-            raise
-
-        # Handle response
-        if is_streaming:
-            return TracedChatStream(result, span, token, output_fields)
-        else:
-            try:
-                for k, v in _extract_chat_response_attrs(result, output_fields).items():
-                    span.set_attribute(k, v)
-            except Exception:
-                logger.debug("Failed to extract response attributes", exc_info=True)
-            _set_ok_status(span)
-            span.end()
-            context.detach(token)
-            return result
-
-    # Step 5: Monkey-patch
-    client.chat.completions.create = traced_create
-    client.chat.completions._bud_tracked = True
-    return client
-```
-
----
-
-## 9. Design Decisions
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| **Patching mechanism** | Monkey-patch instance method | Same object identity preserved; `isinstance()` checks still pass; simplest approach |
-| **PII handling** | Safe defaults exclude `messages`/`content`; user opts in via field list | No separate `capture_pii` flag needed — `["messages"]` is explicit enough |
-| **Span lifecycle (non-streaming)** | `create_traced_span()` + manual `span.end()` / `context.detach()` | Consistent with streaming path; avoids nesting context managers |
-| **Span lifecycle (streaming)** | Span created in wrapper, ended in `TracedChatStream._finalize()` | Span must outlive the `create()` call — it covers the entire iteration |
-| **Idempotency** | `_bud_tracked` flag on `ChatCompletions` instance | Prevents double-patching; checked once at patch time; lightweight |
-| **Field capture** | `True \| False \| list[str]` union type | Three modes cover all use cases; consistent for input and output |
-| **Field resolution timing** | At patch time, not per call | Avoids repeated work; field sets are immutable (`frozenset`) |
-| **Context propagation** | Manual `context.attach()` / `context.detach()` | Works with `@track` decorator nesting via standard OTel context |
-| **Attribute fallback** | Unmapped fields → `bud.inference.request.{name}` | Future-proof; new kwargs are captured without code changes |
-| **Stream accumulation** | All chunks stored in list | Required for post-stream aggregation (usage, content, finish_reason) |
-
----
-
-## 10. Error Handling Matrix
-
-| Scenario | Span Status | Exception Recorded | Re-raised | Notes |
-|----------|------------|-------------------|-----------|-------|
-| HTTP 401 / 404 / 422 / 429 / 5xx | ERROR | Yes | Yes | SDK raises `APIError` subclass |
-| `ConnectionError` / `TimeoutError` | ERROR | Yes | Yes | Network-level failure |
-| Streaming: `GeneratorExit` (consumer stops early) | OK (partial) | No | No | `stream_completed=False` |
-| Streaming: exception mid-stream | ERROR | Yes | Yes | `stream_completed=False` |
-| Streaming: normal completion | OK | No | No | `stream_completed=True` |
-| Attribute extraction failure | (no effect on status) | No | No | `logger.debug()` only |
-| `_aggregate_stream_response()` failure | (no effect on status) | No | No | `logger.debug()` only |
-
-**Core principle:** Tracing is transparent. Exceptions from the user's API call are always re-raised. Tracing failures never propagate to the user.
-
----
-
-## 11. Performance Safeguards
-
-1. **`_is_noop()` fast path** — When observability is not configured, `traced_create()` calls `original_create()` directly with zero OTel overhead. This check is a single attribute lookup on the global state object.
-
-2. **No deep copies** — Request kwargs and response objects are read by reference. No serialization or copying unless a field is explicitly captured.
-
-3. **Streaming per-chunk cost** — One `list.append()` + one `int += 1` per chunk. All aggregation happens once in `_finalize()` after the stream ends.
-
-4. **Lazy imports** — `opentelemetry.context` and `opentelemetry.trace` are imported at call time, not module load time. The module can be imported without OTel installed.
-
-5. **String truncation** — All string attributes are truncated to 1000 characters via `_safe_repr()`. Prevents large message payloads from bloating spans.
-
-6. **No message serialization by default** — `json.dumps(messages)` only runs when `"messages"` is explicitly in the input field list. Safe defaults never trigger serialization.
-
----
-
-## 12. Edge Cases
-
-| # | Edge Case | Handling |
-|---|-----------|----------|
-| 1 | **Double-patching** | `_bud_tracked` flag on `ChatCompletions` — second call is a no-op, returns client immediately |
-| 2 | **OTel not installed** | `_is_noop()` returns `True` — original method called directly, no span created |
-| 3 | **Stream never iterated** | `__del__` safety net calls `_finalize()` with warning log — span is ended, context detached |
-| 4 | **Reasoning models** (e.g., o1) | `_aggregate_stream_response()` joins both `delta.content` and `delta.reasoning_content` |
-| 5 | **Tool call streaming** | `delta.tool_calls` accumulated when `"content"` is in output fields |
-| 6 | **Attribute extraction failure** | `try/except` → `logger.debug()` — never affects user's API call |
-| 7 | **`@track` decorator nesting** | Works automatically via OTel context propagation — `track_chat_completions` span becomes a child of the `@track` span |
-| 8 | **Concurrent threads** | Thread-safe — each call creates its own span + context token, no shared mutable state |
-| 9 | **`_finalize()` called twice** | `_finalized` boolean guard prevents double `span.end()` |
-
----
-
-## 13. Reusable Code from Existing Codebase
-
-| Utility | Location | Import Path |
-|---------|----------|-------------|
-| `_is_noop()` | `_track.py:51` | `from bud.observability._track import _is_noop` |
-| `_safe_repr()` | `_track.py:40` | `from bud.observability._track import _safe_repr` |
-| `_record_exception()` | `_track.py:156` | `from bud.observability._track import _record_exception` |
-| `_set_ok_status()` | `_track.py:167` | `from bud.observability._track import _set_ok_status` |
-| `_MAX_ATTR_LENGTH` | `_track.py:31` | `from bud.observability._track import _MAX_ATTR_LENGTH` |
-| `create_traced_span()` | `__init__.py:153` | `from bud.observability import create_traced_span` |
-| `get_tracer()` | `__init__.py:103` | `from bud.observability import get_tracer` |
-
-The existing `TracedStream` class in `_stream_wrapper.py` served as the design template for `TracedChatStream`, but `TracedChatStream` adds chunk accumulation, field-aware aggregation, finalize guard, and `__del__` safety net.
-
----
-
-## 14. Verification Plan
-
-### Unit Tests
-
-| Test | Validates |
-|------|-----------|
-| `test_resolve_fields_true` | `True` → returns safe defaults frozenset |
-| `test_resolve_fields_false` | `False` → returns `None` |
-| `test_resolve_fields_list` | `["model", "messages"]` → returns `frozenset({"model", "messages"})` |
-| `test_extract_request_attrs_safe_defaults` | Captures model, temperature, etc. but NOT messages |
-| `test_extract_request_attrs_with_messages` | When `"messages"` in fields, captures serialized messages |
-| `test_extract_request_attrs_none` | `fields=None` → empty dict |
-| `test_extract_response_attrs_full` | Extracts id, model, usage, finish_reason |
-| `test_extract_response_attrs_content` | When `"content"` in fields, captures completion text |
-| `test_aggregate_stream_basic` | Joins content from chunks, extracts finish_reason |
-| `test_aggregate_stream_reasoning` | Joins both `content` and `reasoning_content` |
-| `test_aggregate_stream_usage` | Finds usage from last chunk (reverse search) |
-| `test_idempotency` | Second `track_chat_completions()` call is no-op |
-
-### Integration Tests (InMemorySpanExporter)
-
-| Test | Validates |
-|------|-----------|
-| `test_non_streaming_span` | Span created with correct name, attributes, OK status |
-| `test_streaming_span` | Span name `"chat.stream"`, TTFT recorded, chunks counted, stream_completed |
-| `test_error_span` | HTTP error → span status ERROR, exception recorded, re-raised |
-| `test_field_list_mode` | `capture_input=["model"]` → only model captured |
-| `test_capture_false` | `capture_input=False` → no input attributes |
-| `test_track_nesting` | `@track` + `track_chat_completions` → parent-child span relationship |
-
-### Manual ClickHouse Validation
-
-Run the example script against a live endpoint and verify:
-```sql
-SELECT
-    SpanName, SpanAttributes, StatusCode
-FROM default_v8.otel_traces
-WHERE SpanAttributes['gen_ai.system'] = 'bud'
-ORDER BY Timestamp DESC
-LIMIT 10;
-```
-
-### Example Script
-
-`examples/observability/track_inference.py` demonstrates:
-1. Basic non-streaming traced call
-2. Streaming traced call with TTFT
-3. Error handling (bad model name)
-4. PII opt-in via `capture_input=["model", "messages"]`
-5. Nesting with `@track` decorator

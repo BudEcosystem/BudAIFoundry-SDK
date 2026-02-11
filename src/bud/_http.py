@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import contextlib
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import httpx
@@ -362,6 +362,48 @@ class AsyncHttpClient:
     async def delete(self, path: str) -> Any:
         """Perform DELETE request."""
         return await self._request("DELETE", path)
+
+    @asynccontextmanager
+    async def async_stream(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+    ) -> AsyncIterator[httpx.Response]:
+        """Stream HTTP response for SSE endpoints (async).
+
+        Args:
+            method: HTTP method (typically POST).
+            path: API path.
+            json: Request body as JSON.
+
+        Yields:
+            httpx.Response object for async streaming iteration.
+        """
+        stream_timeout = httpx.Timeout(
+            connect=10.0,
+            read=600.0,
+            write=30.0,
+            pool=5.0,
+        )
+
+        outgoing_headers: dict[str, str] = {
+            "Accept": "text/event-stream",
+        }
+        _inject_trace_context(outgoing_headers)
+
+        async with self._client.stream(
+            method,
+            path,
+            json=json,
+            headers=outgoing_headers,
+            timeout=stream_timeout,
+        ) as response:
+            if not response.is_success:
+                await response.aread()
+                self._handle_response(response)
+            yield response
 
     async def _request(
         self,

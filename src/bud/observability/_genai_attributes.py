@@ -120,3 +120,128 @@ CHAT_DEFAULT_OUTPUT_FIELDS: frozenset[str] = frozenset(
 # Backward compatibility aliases
 CHAT_SAFE_INPUT_FIELDS = CHAT_DEFAULT_INPUT_FIELDS
 CHAT_SAFE_OUTPUT_FIELDS = CHAT_DEFAULT_OUTPUT_FIELDS
+
+# ---------------------------------------------------------------------------
+# Responses API attributes
+# ---------------------------------------------------------------------------
+
+GENAI_OPERATION_NAME = "gen_ai.operation.name"
+GENAI_CONVERSATION_ID = "gen_ai.conversation.id"
+GENAI_RESPONSE_STATUS = "gen_ai.response.status"
+
+# Gateway-aligned attributes
+GENAI_INPUT_MESSAGES = "gen_ai.input.messages"
+GENAI_REQUEST_INSTRUCTIONS = "gen_ai.request.instructions"
+GENAI_PROMPT = "gen_ai.prompt"
+GENAI_PROMPT_ID = "gen_ai.prompt.id"
+GENAI_PROMPT_VERSION = "gen_ai.prompt.version"
+GENAI_PROMPT_VARIABLES = "gen_ai.prompt.variables"
+GENAI_OUTPUT_MESSAGES = "gen_ai.output.messages"
+GENAI_SYSTEM_INSTRUCTIONS = "gen_ai.system.instructions"
+GENAI_RESPONSE_REASONING = "gen_ai.response.reasoning"
+GENAI_OUTPUT_TYPE = "gen_ai.output.type"
+GENAI_RESPONSE_TOOLS = "gen_ai.response.tools"
+GENAI_RESPONSE_TOOL_CHOICE = "gen_ai.response.tool_choice"
+GENAI_RESPONSE_PROMPT = "gen_ai.response.prompt"
+GENAI_RESPONSE_BACKGROUND = "gen_ai.response.background"
+GENAI_RESPONSE_PARALLEL_TOOL_CALLS = "gen_ai.response.parallel_tool_calls"
+GENAI_RESPONSE_MAX_OUTPUT_TOKENS = "gen_ai.response.max_output_tokens"
+GENAI_RESPONSE_TEMPERATURE = "gen_ai.response.temperature"
+GENAI_RESPONSE_TOP_P = "gen_ai.response.top_p"
+GENAI_RESPONSE_SERVICE_TIER = "gen_ai.openai.response.service_tier"
+GENAI_USAGE = "gen_ai.usage"
+
+# ---------------------------------------------------------------------------
+# Mapping: Responses create() kwarg name -> OTel attribute key
+# ---------------------------------------------------------------------------
+
+RESPONSES_INPUT_ATTR_MAP: dict[str, str] = {
+    # Existing (unchanged)
+    "model": GENAI_REQUEST_MODEL,
+    "temperature": GENAI_REQUEST_TEMPERATURE,
+    "top_p": GENAI_REQUEST_TOP_P,
+    "max_output_tokens": GENAI_REQUEST_MAX_TOKENS,
+    "stream": BUD_INFERENCE_STREAM,
+    "tools": BUD_INFERENCE_REQUEST_TOOLS,
+    "tool_choice": BUD_INFERENCE_REQUEST_TOOL_CHOICE,
+    "user": BUD_INFERENCE_REQUEST_USER,
+    "previous_response_id": GENAI_CONVERSATION_ID,
+    # Gateway-aligned keys
+    "input": GENAI_INPUT_MESSAGES,
+    "instructions": GENAI_REQUEST_INSTRUCTIONS,
+    "prompt": GENAI_PROMPT,
+    # New mappings (match gateway)
+    "reasoning": "gen_ai.request.reasoning",
+    "include": "gen_ai.request.include",
+    "store": "gen_ai.request.store",
+    "service_tier": "gen_ai.request.service_tier",
+    "truncation": "gen_ai.request.truncation",
+    "response_format": "gen_ai.request.response_format",
+    "metadata": "gen_ai.request.metadata",
+    "parallel_tool_calls": "gen_ai.request.parallel_tool_calls",
+    "max_tool_calls": "gen_ai.request.max_tool_calls",
+    "background": "gen_ai.request.background",
+    "modalities": "gen_ai.request.modalities",
+    "stream_options": "gen_ai.request.stream_options",
+}
+
+# ---------------------------------------------------------------------------
+# Responses API default field sets
+# ---------------------------------------------------------------------------
+
+RESPONSES_DEFAULT_INPUT_FIELDS: frozenset[str] = frozenset(
+    {
+        "model",
+        "temperature",
+        "top_p",
+        "max_output_tokens",
+        "stream",
+        "tool_choice",
+        "input",
+        "instructions",
+        "tools",
+        "user",
+        "prompt",
+        "previous_response_id",
+        "reasoning",
+        "store",
+        "service_tier",
+        "truncation",
+        "include",
+        "response_format",
+        "metadata",
+        "parallel_tool_calls",
+        "max_tool_calls",
+        "background",
+        "modalities",
+        "stream_options",
+    }
+)
+
+RESPONSES_DEFAULT_OUTPUT_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "status",
+        "created_at",
+        "model",
+        "usage",
+        "object",
+        "output",
+        "instructions",
+        "background",
+        "parallel_tool_calls",
+        "max_output_tokens",
+        "temperature",
+        "top_p",
+        "service_tier",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "text",
+        "prompt",
+    }
+)
+
+# Backward compatibility aliases
+RESPONSES_SAFE_INPUT_FIELDS = RESPONSES_DEFAULT_INPUT_FIELDS
+RESPONSES_SAFE_OUTPUT_FIELDS = RESPONSES_DEFAULT_OUTPUT_FIELDS

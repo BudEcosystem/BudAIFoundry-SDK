@@ -35,7 +35,7 @@ class TestObservabilityConfig:
         assert config.compression == "gzip"
         assert config.batch_max_queue_size == 2048
         assert config.batch_max_export_size == 512
-        assert config.batch_schedule_delay_ms == 5000
+        assert config.batch_schedule_delay_ms == 1000
         assert config.metrics_export_interval_ms == 60000
         assert config.log_level == "WARNING"
 

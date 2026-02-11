@@ -2,6 +2,7 @@
 
 Public API:
     configure()          — Main entry point (3-5 lines to set up)
+    flush()              — Force-flush pending telemetry
     shutdown()           — Flush and release resources
     is_configured()      — Check if observability is active
     get_tracer()         — Get OTel Tracer (or no-op)
@@ -10,6 +11,7 @@ Public API:
     inject_context()     — Inject trace context into headers
     extract_from_request() — Extract context from Request objects
     track_chat_completions() — Instrument client.chat.completions.create()
+    track_responses()    — Instrument client.responses.create()
 """
 
 from __future__ import annotations
@@ -111,6 +113,26 @@ def configure(
         logger.warning("Observability configuration failed", exc_info=True)
 
 
+def flush(timeout_millis: int = 30000) -> bool:
+    """Force-flush all pending telemetry data.
+
+    Call this before ``shutdown()`` to ensure all spans/metrics are exported.
+
+    Args:
+        timeout_millis: Maximum time to wait for flush in milliseconds.
+
+    Returns:
+        True if all providers flushed within the timeout.
+    """
+    try:
+        from bud.observability._state import _state
+
+        return _state.flush(timeout_millis)
+    except Exception:
+        logger.debug("Observability flush error", exc_info=True)
+        return False
+
+
 def shutdown() -> None:
     """Flush pending telemetry and release resources."""
     try:
@@ -188,7 +210,8 @@ def create_traced_span(
 
     Returns (span, context_token) for use with TracedStream or manual lifecycle.
     """
-    from opentelemetry import context as _ctx, trace as _trace
+    from opentelemetry import context as _ctx
+    from opentelemetry import trace as _trace
 
     if tracer is None:
         tracer = get_tracer()
@@ -227,11 +250,16 @@ def __getattr__(name: str) -> Any:
         from bud.observability._inference_tracker import track_chat_completions
 
         return track_chat_completions
+    if name == "track_responses":
+        from bud.observability._responses_tracker import track_responses
+
+        return track_responses
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
     "configure",
+    "flush",
     "shutdown",
     "is_configured",
     "get_tracer",
@@ -249,4 +277,5 @@ __all__ = [
     "TracedStream",
     "track",
     "track_chat_completions",
+    "track_responses",
 ]

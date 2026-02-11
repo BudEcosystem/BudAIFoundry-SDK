@@ -57,8 +57,8 @@ class ObservabilityConfig:
     traces_enabled: bool = True
     batch_max_queue_size: int = 2048
     batch_max_export_size: int = 512
-    batch_schedule_delay_ms: int = 5000
-    export_timeout_ms: int = 30000
+    batch_schedule_delay_ms: int = 1000
+    export_timeout_ms: int = 5000
 
     # Metrics — PeriodicExportingMetricReader tuning
     metrics_enabled: bool = True

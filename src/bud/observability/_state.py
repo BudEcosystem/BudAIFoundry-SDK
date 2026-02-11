@@ -72,6 +72,29 @@ class _ObservabilityState:
             self._is_configured = True
             logger.info("Observability configured successfully")
 
+    def flush(self, timeout_millis: int = 30000) -> bool:
+        """Force-flush all pending telemetry data.
+
+        Returns True if all providers flushed successfully within timeout.
+        """
+        if not self._is_configured:
+            return True
+
+        success = True
+        for provider in [
+            self._tracer_provider,
+            self._meter_provider,
+            self._logger_provider,
+        ]:
+            if provider is not None and hasattr(provider, "force_flush"):
+                try:
+                    if not provider.force_flush(timeout_millis):
+                        success = False
+                except Exception:
+                    logger.debug("Provider flush error", exc_info=True)
+                    success = False
+        return success
+
     def shutdown(self) -> None:
         """Flush and shut down all owned providers."""
         with self._lock:
