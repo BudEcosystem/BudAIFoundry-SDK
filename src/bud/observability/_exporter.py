@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
