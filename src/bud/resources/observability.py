@@ -25,7 +25,7 @@ def _resolve_date(value: str | datetime | None) -> datetime | None:
             return value.replace(tzinfo=timezone.utc)
         return value
     if isinstance(value, str):
-        dt = datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             return dt.replace(tzinfo=timezone.utc)
         return dt
