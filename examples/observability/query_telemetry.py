@@ -11,9 +11,7 @@ Requires:
   - BUD_APP_URL (or pass app_url to BudClient)
 """
 
-from datetime import datetime, timezone
-
-from bud import BudClient, FilterCondition, FilterOperator, OrderBySpec
+from bud import BudClient
 
 # --- Client setup (Project A) ---
 # API key determines which project the queries target.
@@ -23,7 +21,7 @@ client = BudClient(
 )
 
 PROMPT = "test-tool-name"
-FROM = datetime(2026, 2, 5, tzinfo=timezone.utc)
+FROM = "2026-02-05"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Session list (default, depth=0)
@@ -141,7 +139,7 @@ result = client.observability.query(
     prompt_id=PROMPT,
     from_date=FROM,
     span_filters=[
-        FilterCondition(field="gateway_analytics.status_code", op=FilterOperator.neq, value="200"),
+        {"field": "gateway_analytics.status_code", "op": "neq", "value": "200"},
     ],
     select_attributes=["gateway_analytics.status_code", "gateway_analytics.error_message"],
 )
@@ -159,7 +157,7 @@ result = client.observability.query(
     prompt_id=PROMPT,
     from_date=FROM,
     span_filters=[
-        FilterCondition(field="gateway_analytics.status_code", op=FilterOperator.eq, value="200"),
+        {"field": "gateway_analytics.status_code", "op": "eq", "value": "200"},
     ],
 )
 print(f"Successful sessions: {result.total_record}")
@@ -176,7 +174,7 @@ result = client.observability.query(
     prompt_id=PROMPT,
     from_date=FROM,
     resource_filters=[
-        FilterCondition(field="service.name", op=FilterOperator.eq, value="budgateway"),
+        {"field": "service.name", "op": "eq", "value": "budgateway"},
     ],
 )
 print(f"Sessions from budgateway: {result.total_record}")
@@ -194,9 +192,7 @@ result = client.observability.query(
     prompt_id=PROMPT,
     from_date=FROM,
     span_filters=[
-        FilterCondition(
-            field="gateway_analytics.total_duration_ms", op=FilterOperator.gt, value="10000"
-        ),
+        {"field": "gateway_analytics.total_duration_ms", "op": "gt", "value": "10000"},
     ],
     select_attributes=["gateway_analytics.total_duration_ms"],
 )
@@ -216,7 +212,7 @@ result = client.observability.query(
     span_names=["POST /v1/responses"],
     depth=2,
     resource_filters=[
-        FilterCondition(field="service.name", op=FilterOperator.eq, value="budgateway"),
+        {"field": "service.name", "op": "eq", "value": "budgateway"},
     ],
     include_events=True,
     include_links=True,
@@ -260,7 +256,7 @@ print("\n--- 13. Order by timestamp ascending ---")
 result = client.observability.query(
     prompt_id=PROMPT,
     from_date=FROM,
-    order_by=[OrderBySpec(field="timestamp", direction="asc")],
+    order_by=[{"field": "timestamp", "direction": "asc"}],
     select_attributes=["gateway_analytics.total_duration_ms"],
 )
 for i, span in enumerate(result.data):
@@ -291,9 +287,7 @@ result = client.observability.query(
     prompt_id=PROMPT,
     from_date=FROM,
     span_filters=[
-        FilterCondition(
-            field="gateway_analytics.status_code", op=FilterOperator.in_, value=["200", "500"]
-        ),
+        {"field": "gateway_analytics.status_code", "op": "in_", "value": ["200", "500"]},
     ],
     select_attributes=["gateway_analytics.status_code"],
 )
@@ -326,8 +320,8 @@ print("\n--- 17. Time range with explicit to_date (1-minute window) ---")
 
 result = client.observability.query(
     prompt_id=PROMPT,
-    from_date=datetime(2026, 2, 5, 13, 7, 0, tzinfo=timezone.utc),
-    to_date=datetime(2026, 2, 5, 13, 8, 0, tzinfo=timezone.utc),
+    from_date="2026-02-05T13:07:00+00:00",
+    to_date="2026-02-05T13:08:00+00:00",
 )
 print(f"Sessions in window: {result.total_record}")
 for span in result.data:

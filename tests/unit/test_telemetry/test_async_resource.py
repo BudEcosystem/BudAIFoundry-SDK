@@ -286,3 +286,75 @@ async def test_async_close_without_observability_access() -> None:
     client = _make_async_client()
     assert client._AsyncBudClient__app_http is None  # type: ignore[attr-defined]
     await client.close()
+
+
+# ── Convenience API tests ─────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_async_query_iso_string_date() -> None:
+    """Test async query with an ISO-8601 string for from_date."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_async_client()
+    await client.observability.query(
+        prompt_id="my-prompt",
+        from_date="2026-02-05",
+    )
+    await client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["from_date"] == "2026-02-05T00:00:00+00:00"
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_async_query_dict_filters() -> None:
+    """Test async query with dict-based span_filters."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_async_client()
+    await client.observability.query(
+        prompt_id="my-prompt",
+        from_date="2026-02-05",
+        span_filters=[
+            {"field": "status_code", "op": "eq", "value": "200"},
+        ],
+    )
+    await client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert len(body["span_filters"]) == 1
+    assert body["span_filters"][0]["field"] == "status_code"
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_async_query_dict_order_by() -> None:
+    """Test async query with dict-based order_by."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_async_client()
+    await client.observability.query(
+        prompt_id="my-prompt",
+        from_date="2026-02-05",
+        order_by=[{"field": "timestamp", "direction": "asc"}],
+    )
+    await client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert len(body["order_by"]) == 1
+    assert body["order_by"][0]["direction"] == "asc"

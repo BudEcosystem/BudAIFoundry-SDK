@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from bud.models.telemetry import (
@@ -13,9 +13,48 @@ from bud.models.telemetry import (
 from bud.resources._base import AsyncResource, SyncResource
 
 
+def _resolve_date(value: str | datetime | None) -> datetime | None:
+    """Convert an ISO-8601 string to *datetime*; pass through *datetime* objects.
+
+    Naive datetimes (no tzinfo) are assumed UTC.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, str):
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+    raise TypeError(f"Expected str or datetime, got {type(value).__name__}")
+
+
+def _normalize_filters(
+    filters: list[FilterCondition | dict[str, Any]] | None,
+) -> list[FilterCondition] | None:
+    """Accept ``list[dict]`` or ``list[FilterCondition]``."""
+    if filters is None:
+        return None
+    return [
+        f if isinstance(f, FilterCondition) else FilterCondition.model_validate(f) for f in filters
+    ]
+
+
+def _normalize_order_by(
+    order_by: list[OrderBySpec | dict[str, Any]] | None,
+) -> list[OrderBySpec] | None:
+    """Accept ``list[dict]`` or ``list[OrderBySpec]``."""
+    if order_by is None:
+        return None
+    return [o if isinstance(o, OrderBySpec) else OrderBySpec.model_validate(o) for o in order_by]
+
+
 def _build_query_payload(
     prompt_id: str,
-    from_date: datetime,
+    from_date: datetime | None = None,
     *,
     version: str | None = None,
     to_date: datetime | None = None,
@@ -36,8 +75,9 @@ def _build_query_payload(
     """Build the JSON payload for a telemetry query request."""
     payload: dict[str, Any] = {
         "prompt_id": prompt_id,
-        "from_date": from_date.isoformat(),
     }
+    if from_date is not None:
+        payload["from_date"] = from_date.isoformat()
     if version is not None:
         payload["version"] = version
     if to_date is not None:
@@ -77,10 +117,10 @@ class Observability(SyncResource):
     def query(
         self,
         prompt_id: str,
-        from_date: datetime,
+        from_date: str | datetime | None = None,
         *,
         version: str | None = None,
-        to_date: datetime | None = None,
+        to_date: str | datetime | None = None,
         trace_id: str | None = None,
         span_names: list[str] | None = None,
         depth: int = 0,
@@ -89,9 +129,9 @@ class Observability(SyncResource):
         include_resource_attributes: bool = False,
         include_events: bool = False,
         include_links: bool = False,
-        span_filters: list[FilterCondition] | None = None,
-        resource_filters: list[FilterCondition] | None = None,
-        order_by: list[OrderBySpec] | None = None,
+        span_filters: list[FilterCondition | dict[str, Any]] | None = None,
+        resource_filters: list[FilterCondition | dict[str, Any]] | None = None,
+        order_by: list[OrderBySpec | dict[str, Any]] | None = None,
         page: int = 1,
         limit: int = 10,
     ) -> TelemetryQueryResponse:
@@ -99,9 +139,9 @@ class Observability(SyncResource):
 
         Args:
             prompt_id: Prompt identifier to query spans for.
-            from_date: Start of the time range.
+            from_date: Start of the time range (ISO-8601 string or datetime).
             version: Filter by prompt version.
-            to_date: End of the time range.
+            to_date: End of the time range (ISO-8601 string or datetime).
             trace_id: Filter to a specific trace.
             span_names: Filter by span names.
             depth: Child span depth (0 = root only).
@@ -110,9 +150,9 @@ class Observability(SyncResource):
             include_resource_attributes: Include resource attributes.
             include_events: Include span events.
             include_links: Include span links.
-            span_filters: Additional span filter conditions.
-            resource_filters: Additional resource filter conditions.
-            order_by: Sort specifications.
+            span_filters: Span filter conditions (FilterCondition or dict).
+            resource_filters: Resource filter conditions (FilterCondition or dict).
+            order_by: Sort specifications (OrderBySpec or dict).
             page: Page number (1-based).
             limit: Results per page.
 
@@ -121,9 +161,9 @@ class Observability(SyncResource):
         """
         payload = _build_query_payload(
             prompt_id,
-            from_date,
+            _resolve_date(from_date),
             version=version,
-            to_date=to_date,
+            to_date=_resolve_date(to_date),
             trace_id=trace_id,
             span_names=span_names,
             depth=depth,
@@ -132,9 +172,9 @@ class Observability(SyncResource):
             include_resource_attributes=include_resource_attributes,
             include_events=include_events,
             include_links=include_links,
-            span_filters=span_filters,
-            resource_filters=resource_filters,
-            order_by=order_by,
+            span_filters=_normalize_filters(span_filters),
+            resource_filters=_normalize_filters(resource_filters),
+            order_by=_normalize_order_by(order_by),
             page=page,
             limit=limit,
         )
@@ -148,10 +188,10 @@ class AsyncObservability(AsyncResource):
     async def query(
         self,
         prompt_id: str,
-        from_date: datetime,
+        from_date: str | datetime | None = None,
         *,
         version: str | None = None,
-        to_date: datetime | None = None,
+        to_date: str | datetime | None = None,
         trace_id: str | None = None,
         span_names: list[str] | None = None,
         depth: int = 0,
@@ -160,9 +200,9 @@ class AsyncObservability(AsyncResource):
         include_resource_attributes: bool = False,
         include_events: bool = False,
         include_links: bool = False,
-        span_filters: list[FilterCondition] | None = None,
-        resource_filters: list[FilterCondition] | None = None,
-        order_by: list[OrderBySpec] | None = None,
+        span_filters: list[FilterCondition | dict[str, Any]] | None = None,
+        resource_filters: list[FilterCondition | dict[str, Any]] | None = None,
+        order_by: list[OrderBySpec | dict[str, Any]] | None = None,
         page: int = 1,
         limit: int = 10,
     ) -> TelemetryQueryResponse:
@@ -172,9 +212,9 @@ class AsyncObservability(AsyncResource):
         """
         payload = _build_query_payload(
             prompt_id,
-            from_date,
+            _resolve_date(from_date),
             version=version,
-            to_date=to_date,
+            to_date=_resolve_date(to_date),
             trace_id=trace_id,
             span_names=span_names,
             depth=depth,
@@ -183,9 +223,9 @@ class AsyncObservability(AsyncResource):
             include_resource_attributes=include_resource_attributes,
             include_events=include_events,
             include_links=include_links,
-            span_filters=span_filters,
-            resource_filters=resource_filters,
-            order_by=order_by,
+            span_filters=_normalize_filters(span_filters),
+            resource_filters=_normalize_filters(resource_filters),
+            order_by=_normalize_order_by(order_by),
             page=page,
             limit=limit,
         )

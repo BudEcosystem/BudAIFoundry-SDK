@@ -321,3 +321,94 @@ def test_close_without_observability_access() -> None:
     assert client._BudClient__app_http is None  # type: ignore[attr-defined]
     # close() should not raise
     client.close()
+
+
+# ── Convenience API tests ─────────────────────────────────────────────────────
+
+
+@respx.mock
+def test_query_iso_string_date() -> None:
+    """Test query with an ISO-8601 string for from_date."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_client()
+    client.observability.query(
+        prompt_id="my-prompt",
+        from_date="2026-02-05",
+    )
+    client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["prompt_id"] == "my-prompt"
+    assert body["from_date"] == "2026-02-05T00:00:00+00:00"
+
+
+@respx.mock
+def test_query_dict_filters() -> None:
+    """Test query with dict-based span_filters."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_client()
+    client.observability.query(
+        prompt_id="my-prompt",
+        from_date="2026-02-05",
+        span_filters=[
+            {"field": "status_code", "op": "eq", "value": "200"},
+        ],
+    )
+    client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert len(body["span_filters"]) == 1
+    assert body["span_filters"][0]["field"] == "status_code"
+    assert body["span_filters"][0]["op"] == "eq"
+    assert body["span_filters"][0]["value"] == "200"
+
+
+@respx.mock
+def test_query_dict_order_by() -> None:
+    """Test query with dict-based order_by."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_client()
+    client.observability.query(
+        prompt_id="my-prompt",
+        from_date="2026-02-05",
+        order_by=[{"field": "timestamp", "direction": "asc"}],
+    )
+    client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert len(body["order_by"]) == 1
+    assert body["order_by"][0]["field"] == "timestamp"
+    assert body["order_by"][0]["direction"] == "asc"
+
+
+@respx.mock
+def test_query_no_from_date() -> None:
+    """Test query without from_date (omitted entirely)."""
+    route = respx.post(f"{APP_URL}/prompts/telemetry/query").mock(
+        return_value=Response(200, json=SAMPLE_RESPONSE)
+    )
+
+    client = _make_client()
+    client.observability.query(prompt_id="my-prompt")
+    client.close()
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["prompt_id"] == "my-prompt"
+    assert "from_date" not in body
