@@ -293,18 +293,19 @@ def _wrap_sync_generator(
             except Exception as exc:
                 _record_exception(span, exc)
                 raise
-            span.set_attribute("bud.track.yield_count", chunk_count)
-            span.set_attribute("bud.track.generator_completed", completed)
-            if capture_output and accumulated:
-                try:
-                    span.set_attribute(
-                        "bud.track.output",
-                        _try_aggregate_generator(accumulated, generations_aggregator),
-                    )
-                except Exception:
-                    logger.debug("Failed to capture generator output", exc_info=True)
-            if completed:
-                _set_ok_status(span)
+            finally:
+                span.set_attribute("bud.track.yield_count", chunk_count)
+                span.set_attribute("bud.track.generator_completed", completed)
+                if capture_output and accumulated:
+                    try:
+                        span.set_attribute(
+                            "bud.track.output",
+                            _try_aggregate_generator(accumulated, generations_aggregator),
+                        )
+                    except Exception:
+                        logger.debug("Failed to capture generator output", exc_info=True)
+                if completed:
+                    _set_ok_status(span)
 
     return wrapper
 
@@ -350,18 +351,19 @@ def _wrap_async_generator(
             except Exception as exc:
                 _record_exception(span, exc)
                 raise
-            span.set_attribute("bud.track.yield_count", chunk_count)
-            span.set_attribute("bud.track.generator_completed", completed)
-            if capture_output and accumulated:
-                try:
-                    span.set_attribute(
-                        "bud.track.output",
-                        _try_aggregate_generator(accumulated, generations_aggregator),
-                    )
-                except Exception:
-                    logger.debug("Failed to capture generator output", exc_info=True)
-            if completed:
-                _set_ok_status(span)
+            finally:
+                span.set_attribute("bud.track.yield_count", chunk_count)
+                span.set_attribute("bud.track.generator_completed", completed)
+                if capture_output and accumulated:
+                    try:
+                        span.set_attribute(
+                            "bud.track.output",
+                            _try_aggregate_generator(accumulated, generations_aggregator),
+                        )
+                    except Exception:
+                        logger.debug("Failed to capture generator output", exc_info=True)
+                if completed:
+                    _set_ok_status(span)
 
     return wrapper
 

@@ -101,10 +101,20 @@ def _resolve_fields(
 # ---------------------------------------------------------------------------
 
 
-_JSON_FIELDS = frozenset({
-    "input", "tools", "reasoning", "tool_choice", "instructions",
-    "include", "metadata", "response_format", "modalities", "stream_options",
-})
+_JSON_FIELDS = frozenset(
+    {
+        "input",
+        "tools",
+        "reasoning",
+        "tool_choice",
+        "instructions",
+        "include",
+        "metadata",
+        "response_format",
+        "modalities",
+        "stream_options",
+    }
+)
 
 
 def _extract_responses_request_attrs(
@@ -329,31 +339,32 @@ class TracedResponseStream:
             return
         self._finalized = True
 
-        self._span.set_attribute(BUD_INFERENCE_CHUNKS, self._chunk_count)
-        self._span.set_attribute(BUD_INFERENCE_STREAM_COMPLETED, self._completed)
+        try:
+            self._span.set_attribute(BUD_INFERENCE_CHUNKS, self._chunk_count)
+            self._span.set_attribute(BUD_INFERENCE_STREAM_COMPLETED, self._completed)
 
-        # Extract response attributes from the completed Response object
-        completed_response = getattr(self._inner, "completed_response", None)
-        if completed_response is not None:
-            try:
-                for k, v in _extract_responses_response_attrs(
-                    completed_response, self._output_fields
-                ).items():
-                    self._span.set_attribute(k, v)
-            except Exception:
-                logger.debug("Failed to extract response attributes from stream", exc_info=True)
+            # Extract response attributes from the completed Response object
+            completed_response = getattr(self._inner, "completed_response", None)
+            if completed_response is not None:
+                try:
+                    for k, v in _extract_responses_response_attrs(
+                        completed_response, self._output_fields
+                    ).items():
+                        self._span.set_attribute(k, v)
+                except Exception:
+                    logger.debug("Failed to extract response attributes from stream", exc_info=True)
 
-        if self._completed:
-            _set_ok_status(self._span)
+            if self._completed:
+                _set_ok_status(self._span)
+        finally:
+            self._span.end()
+            if self._context_token is not None:
+                try:
+                    from opentelemetry import context
 
-        self._span.end()
-        if self._context_token is not None:
-            try:
-                from opentelemetry import context
-
-                context.detach(self._context_token)
-            except Exception:
-                pass
+                    context.detach(self._context_token)
+                except Exception:
+                    pass
 
     def __enter__(self):
         return self
@@ -459,19 +470,21 @@ def track_responses(
 
         # Non-streaming: extract response attrs, finalize span
         try:
-            for k, v in _extract_responses_response_attrs(result, output_fields).items():
-                span.set_attribute(k, v)
-        except Exception:
-            logger.debug("Failed to extract response attributes", exc_info=True)
+            try:
+                for k, v in _extract_responses_response_attrs(result, output_fields).items():
+                    span.set_attribute(k, v)
+            except Exception:
+                logger.debug("Failed to extract response attributes", exc_info=True)
+            _set_ok_status(span)
+        finally:
+            span.end()
+            if token is not None:
+                try:
+                    from opentelemetry import context
 
-        _set_ok_status(span)
-        span.end()
-        try:
-            from opentelemetry import context
-
-            context.detach(token)
-        except Exception:
-            pass
+                    context.detach(token)
+                except Exception:
+                    pass
         return result
 
     # Step 5: Monkey-patch

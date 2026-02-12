@@ -10,6 +10,7 @@ Implements the provider decision tree:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -84,51 +85,61 @@ def create_providers(config: ObservabilityConfig) -> ProviderBundle:
 
     bundle = ProviderBundle(owned=True)
 
-    # Traces
-    if config.traces_enabled:
-        tracer_provider = TracerProvider(resource=resource)
-        # BaggageSpanProcessor must be first
-        tracer_provider.add_span_processor(BaggageSpanProcessor())
-        # Authenticated OTLP exporter
-        trace_exporter = create_trace_exporter(config)
-        tracer_provider.add_span_processor(
-            BatchSpanProcessor(
-                trace_exporter,
-                max_queue_size=config.batch_max_queue_size,
-                max_export_batch_size=config.batch_max_export_size,
-                schedule_delay_millis=config.batch_schedule_delay_ms,
-                export_timeout_millis=config.export_timeout_ms,
+    try:
+        # Traces
+        if config.traces_enabled:
+            tracer_provider = TracerProvider(resource=resource)
+            # BaggageSpanProcessor must be first
+            tracer_provider.add_span_processor(BaggageSpanProcessor())
+            # Authenticated OTLP exporter
+            trace_exporter = create_trace_exporter(config)
+            tracer_provider.add_span_processor(
+                BatchSpanProcessor(
+                    trace_exporter,
+                    max_queue_size=config.batch_max_queue_size,
+                    max_export_batch_size=config.batch_max_export_size,
+                    schedule_delay_millis=config.batch_schedule_delay_ms,
+                    export_timeout_millis=config.export_timeout_ms,
+                )
             )
-        )
-        trace.set_tracer_provider(tracer_provider)
-        bundle.tracer_provider = tracer_provider
+            trace.set_tracer_provider(tracer_provider)
+            bundle.tracer_provider = tracer_provider
 
-    # Metrics
-    if config.metrics_enabled:
-        metric_exporter = create_metric_exporter(config)
-        reader = PeriodicExportingMetricReader(
-            metric_exporter,
-            export_interval_millis=config.metrics_export_interval_ms,
-        )
-        meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
-        metrics.set_meter_provider(meter_provider)
-        bundle.meter_provider = meter_provider
+        # Metrics
+        if config.metrics_enabled:
+            metric_exporter = create_metric_exporter(config)
+            reader = PeriodicExportingMetricReader(
+                metric_exporter,
+                export_interval_millis=config.metrics_export_interval_ms,
+            )
+            meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+            metrics.set_meter_provider(meter_provider)
+            bundle.meter_provider = meter_provider
 
-    # Logs
-    if config.logs_enabled:
-        try:
-            from bud.observability._logging import setup_log_bridge, setup_log_provider
+        # Logs
+        if config.logs_enabled:
+            try:
+                from bud.observability._logging import setup_log_bridge, setup_log_provider
 
-            log_provider = setup_log_provider(config, resource=resource)
-            setup_log_bridge(log_provider, config.log_level)
-            bundle.logger_provider = log_provider
-        except Exception:
-            logger.debug("Log provider setup failed, skipping", exc_info=True)
+                log_provider = setup_log_provider(config, resource=resource)
+                setup_log_bridge(log_provider, config.log_level)
+                bundle.logger_provider = log_provider
+            except Exception:
+                logger.debug("Log provider setup failed, skipping", exc_info=True)
 
-    # Propagator
-    setup_propagator()
+        # Propagator
+        setup_propagator()
 
-    return bundle
+        return bundle
+    except Exception:
+        # Clean up partially-created providers to avoid orphaned resources
+        if bundle.tracer_provider and hasattr(bundle.tracer_provider, "shutdown"):
+            with contextlib.suppress(Exception):
+                bundle.tracer_provider.shutdown()
+        if bundle.meter_provider and hasattr(bundle.meter_provider, "shutdown"):
+            with contextlib.suppress(Exception):
+                bundle.meter_provider.shutdown()
+        raise
 
 
 def attach_to_providers(config: ObservabilityConfig) -> ProviderBundle:

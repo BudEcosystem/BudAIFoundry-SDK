@@ -20,7 +20,7 @@ class BaggageSpanProcessor(SpanProcessor):
         ctx = parent_context if parent_context is not None else context.get_current()
         for key in BAGGAGE_KEYS:
             value = baggage.get_baggage(key, context=ctx)
-            if value:
+            if value is not None:
                 span.set_attribute(key, str(value))
 
     def on_end(self, span: ReadableSpan) -> None:  # noqa: ARG002

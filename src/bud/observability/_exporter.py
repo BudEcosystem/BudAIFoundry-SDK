@@ -79,11 +79,18 @@ class _RetrySpanExporter(SpanExporter):
         return last_result
 
     def shutdown(self) -> None:
-        self._inner.shutdown()
+        try:
+            self._inner.shutdown()
+        except Exception:
+            logger.debug("Inner exporter shutdown failed", exc_info=True)
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         if hasattr(self._inner, "force_flush"):
-            return self._inner.force_flush(timeout_millis)
+            try:
+                return self._inner.force_flush(timeout_millis)
+            except Exception:
+                logger.debug("Inner exporter force_flush failed", exc_info=True)
+                return False
         return True
 
 

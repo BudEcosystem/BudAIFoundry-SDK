@@ -172,15 +172,17 @@ def _extract_chat_response_attrs(
                             if hasattr(item, "model_dump_json")
                             else item
                         )
-            choices_data.append({
-                "index": c.index if hasattr(c, "index") else 0,
-                "finish_reason": c.finish_reason,
-                "message": {
-                    "role": getattr(c.message, "role", None),
-                    "content": c.message.content,
-                    "tool_calls": tc_serializable,
-                },
-            })
+            choices_data.append(
+                {
+                    "index": c.index if hasattr(c, "index") else 0,
+                    "finish_reason": c.finish_reason,
+                    "message": {
+                        "role": getattr(c.message, "role", None),
+                        "content": c.message.content,
+                        "tool_calls": tc_serializable,
+                    },
+                }
+            )
         attrs[BUD_INFERENCE_RESPONSE_CHOICES] = json.dumps(choices_data)
 
     return attrs
@@ -255,7 +257,9 @@ def _aggregate_stream_response(
         content = "".join(content_parts)
         if reasoning_parts:
             reasoning = "".join(reasoning_parts)
-            content = f"{content}\n[Reasoning: {reasoning}]" if content else f"[Reasoning: {reasoning}]"
+            content = (
+                f"{content}\n[Reasoning: {reasoning}]" if content else f"[Reasoning: {reasoning}]"
+            )
 
         # Serialize tool_calls — items may be dicts or objects
         tc_serializable = None
@@ -340,29 +344,30 @@ class TracedChatStream:
             return
         self._finalized = True
 
-        self._span.set_attribute(BUD_INFERENCE_CHUNKS, self._chunk_count)
-        self._span.set_attribute(BUD_INFERENCE_STREAM_COMPLETED, self._completed)
+        try:
+            self._span.set_attribute(BUD_INFERENCE_CHUNKS, self._chunk_count)
+            self._span.set_attribute(BUD_INFERENCE_STREAM_COMPLETED, self._completed)
 
-        if self._accumulated:
-            try:
-                for k, v in _aggregate_stream_response(
-                    self._accumulated, self._output_fields
-                ).items():
-                    self._span.set_attribute(k, v)
-            except Exception:
-                logger.debug("Failed to aggregate stream response", exc_info=True)
+            if self._accumulated:
+                try:
+                    for k, v in _aggregate_stream_response(
+                        self._accumulated, self._output_fields
+                    ).items():
+                        self._span.set_attribute(k, v)
+                except Exception:
+                    logger.debug("Failed to aggregate stream response", exc_info=True)
 
-        if self._completed:
-            _set_ok_status(self._span)
+            if self._completed:
+                _set_ok_status(self._span)
+        finally:
+            self._span.end()
+            if self._context_token is not None:
+                try:
+                    from opentelemetry import context
 
-        self._span.end()
-        if self._context_token is not None:
-            try:
-                from opentelemetry import context
-
-                context.detach(self._context_token)
-            except Exception:
-                pass
+                    context.detach(self._context_token)
+                except Exception:
+                    pass
 
     def __enter__(self):
         return self
@@ -463,19 +468,21 @@ def track_chat_completions(
 
         # Non-streaming: extract response attrs, finalize span
         try:
-            for k, v in _extract_chat_response_attrs(result, output_fields).items():
-                span.set_attribute(k, v)
-        except Exception:
-            logger.debug("Failed to extract response attributes", exc_info=True)
+            try:
+                for k, v in _extract_chat_response_attrs(result, output_fields).items():
+                    span.set_attribute(k, v)
+            except Exception:
+                logger.debug("Failed to extract response attributes", exc_info=True)
+            _set_ok_status(span)
+        finally:
+            span.end()
+            if token is not None:
+                try:
+                    from opentelemetry import context
 
-        _set_ok_status(span)
-        span.end()
-        try:
-            from opentelemetry import context
-
-            context.detach(token)
-        except Exception:
-            pass
+                    context.detach(token)
+                except Exception:
+                    pass
         return result
 
     # Step 5: Monkey-patch
