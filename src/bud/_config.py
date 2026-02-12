@@ -50,6 +50,9 @@ class BudConfig:
     max_retries: int = DEFAULT_MAX_RETRIES
     environment: str = "production"
 
+    # App service URL (for observability queries)
+    app_url: str | None = None
+
     # Additional settings
     debug: bool = False
     verify_ssl: bool = True
@@ -68,6 +71,7 @@ class BudConfig:
             environment=os.getenv("BUD_ENVIRONMENT", "production"),
             debug=os.getenv("BUD_DEBUG", "").lower() in ("1", "true", "yes"),
             verify_ssl=os.getenv("BUD_VERIFY_SSL", "true").lower() not in ("0", "false", "no"),
+            app_url=os.getenv("BUD_APP_URL"),
         )
 
     @classmethod
@@ -100,6 +104,7 @@ class BudConfig:
             environment=data.get("environment", "production"),
             debug=data.get("debug", False),
             verify_ssl=data.get("verify_ssl", True),
+            app_url=data.get("app_url"),
             auth=auth_config,
         )
 
@@ -126,6 +131,8 @@ class BudConfig:
             config.debug = env_config.debug
         if os.getenv("BUD_VERIFY_SSL"):
             config.verify_ssl = env_config.verify_ssl
+        if os.getenv("BUD_APP_URL"):
+            config.app_url = env_config.app_url
 
         return config
 

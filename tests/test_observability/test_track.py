@@ -747,9 +747,10 @@ class TestTrackGenerators:
 
         span = exporter.get_finished_spans()[0]
         assert span.status.status_code == StatusCode.ERROR
-        # yield_count is NOT set after an exception (raise bypasses attribute-setting)
+        # yield_count IS recorded even on error (finally block guarantees it)
         attrs = dict(span.attributes)
-        assert "bud.track.yield_count" not in attrs
+        assert attrs["bud.track.yield_count"] == 1
+        assert attrs["bud.track.generator_completed"] is False
 
     def test_async_generator_string_output_joined(self, traced_setup):
         exporter = traced_setup
