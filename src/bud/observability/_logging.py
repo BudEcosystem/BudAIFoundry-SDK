@@ -30,7 +30,7 @@ def setup_log_provider(config: ObservabilityConfig, resource: Any = None) -> Any
 
     log_exporter = create_log_exporter(config)
     logger_provider = LoggerProvider(resource=resource) if resource else LoggerProvider()
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))  # type: ignore[arg-type]
     return logger_provider
 
 

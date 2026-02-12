@@ -73,7 +73,7 @@ def configure(
     try:
         if not _check_otel_available():
             logger.warning(
-                "OpenTelemetry SDK not installed. Install with: pip install bud-sdk[observability]"
+                "OpenTelemetry SDK not found. Re-install bud-sdk to restore core dependencies."
             )
             return
 

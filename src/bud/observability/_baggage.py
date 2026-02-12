@@ -21,7 +21,7 @@ class BaggageSpanProcessor(SpanProcessor):
         for key in BAGGAGE_KEYS:
             value = baggage.get_baggage(key, context=ctx)
             if value:
-                span.set_attribute(key, value)
+                span.set_attribute(key, str(value))
 
     def on_end(self, span: ReadableSpan) -> None:  # noqa: ARG002
         pass

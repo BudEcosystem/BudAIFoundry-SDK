@@ -495,4 +495,4 @@ def track(
         return decorator(fn)
 
     # @track() or @track(name="x") — return decorator
-    return decorator  # type: ignore[return-value]
+    return decorator

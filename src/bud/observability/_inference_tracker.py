@@ -167,7 +167,7 @@ def _extract_chat_response_attrs(
                     if isinstance(item, dict):
                         tc_serializable.append(item)
                     else:
-                        tc_serializable.append(
+                        tc_serializable.append(  # type: ignore[unreachable]
                             json.loads(item.model_dump_json())
                             if hasattr(item, "model_dump_json")
                             else item
@@ -244,7 +244,7 @@ def _aggregate_stream_response(
                 if delta.content is not None:
                     content_parts.append(delta.content)
                 if getattr(delta, "reasoning_content", None) is not None:
-                    reasoning_parts.append(delta.reasoning_content)
+                    reasoning_parts.append(delta.reasoning_content)  # type: ignore[arg-type]
                 tc = getattr(delta, "tool_calls", None)
                 if tc:
                     tool_calls_parts.extend(tc)
@@ -479,6 +479,6 @@ def track_chat_completions(
         return result
 
     # Step 5: Monkey-patch
-    client.chat.completions.create = traced_create  # type: ignore[assignment]
+    client.chat.completions.create = traced_create  # type: ignore[method-assign]
     client.chat.completions._bud_tracked = True  # type: ignore[attr-defined]
     return client

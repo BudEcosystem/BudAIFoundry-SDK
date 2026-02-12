@@ -475,6 +475,6 @@ def track_responses(
         return result
 
     # Step 5: Monkey-patch
-    client.responses.create = traced_create  # type: ignore[assignment]
+    client.responses.create = traced_create  # type: ignore[method-assign]
     client.responses._bud_tracked = True  # type: ignore[attr-defined]
     return client
