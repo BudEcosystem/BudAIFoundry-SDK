@@ -8,11 +8,13 @@ from bud.resources.clusters import AsyncClusters, Clusters
 from bud.resources.events import AsyncEvents, Events
 from bud.resources.executions import AsyncExecutions, Executions
 from bud.resources.inference import (
+    AsyncResponses,
     Chat,
     ChatCompletions,
     Classifications,
     Embeddings,
     InferenceModels,
+    Responses,
 )
 from bud.resources.pipelines import AsyncPipelines, Pipelines
 from bud.resources.schedules import AsyncSchedules, Schedules
@@ -47,4 +49,6 @@ __all__ = [
     "Classifications",
     "Embeddings",
     "InferenceModels",
+    "Responses",
+    "AsyncResponses",
 ]

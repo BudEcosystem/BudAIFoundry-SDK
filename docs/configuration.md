@@ -25,7 +25,9 @@ client = BudClient(
 | `user_id` | `str` | `None` | User ID for Dapr authentication |
 | `auth` | `AuthProvider` | `None` | Custom authentication provider |
 | `base_url` | `str` | `None` | API base URL |
+| `app_url` | `str` | `None` | App service URL for telemetry queries |
 | `timeout` | `float` | `60.0` | Request timeout in seconds |
+| `app_timeout` | `float` | `30.0` | HTTP timeout for app service requests |
 | `max_retries` | `int` | `3` | Maximum retry attempts |
 | `verify_ssl` | `bool` | `True` | SSL certificate verification |
 
@@ -197,4 +199,51 @@ client = BudClient(
     api_key="your-api-key",
     verify_ssl=False  # Disable SSL verification (not recommended for production)
 )
+```
+
+## Observability Configuration
+
+The SDK includes built-in OpenTelemetry observability. For full documentation, see the [Observability Guide](observability/index.md).
+
+### OTel Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `BUD_OTEL_MODE` | Observability mode (`auto`, `create`, `attach`, `internal`, `disabled`) | `auto` |
+| `BUD_OTEL_ENABLED` | Enable or disable observability (`true`, `false`) | `true` |
+| `BUD_OTEL_SERVICE_NAME` | OTel service name (falls back to `OTEL_SERVICE_NAME`) | `bud-sdk-client` |
+
+### Quick Setup
+
+```python
+from bud import BudClient
+from bud.observability import configure, shutdown
+
+client = BudClient(api_key="your-api-key")
+configure(client=client, service_name="my-service")
+
+# ... use client ...
+
+shutdown()
+```
+
+## Telemetry Query Configuration
+
+The [Telemetry Query API](api/telemetry.md) connects to the BudAI app service (not the gateway). Configure `app_url` to enable it:
+
+```python
+client = BudClient(
+    api_key="your-api-key",
+    base_url="https://gateway.bud.studio",
+    app_url="https://app.bud.studio",
+    app_timeout=30.0,  # Optional: timeout for app service requests
+)
+
+result = client.observability.query(prompt_id="my-prompt")
+```
+
+The `app_url` can also be set via the `BUD_APP_URL` environment variable:
+
+```bash
+export BUD_APP_URL="https://app.bud.studio"
 ```

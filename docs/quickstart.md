@@ -99,6 +99,19 @@ for label_score in response.data[0]:
     print(f"{label_score.label}: {label_score.score:.2%}")
 ```
 
+### Responses API
+
+```python
+response = client.responses.create(
+    prompt={
+        "id": "summarize-v2",
+        "version": "1.0",
+        "variables": {"text": "Python is a programming language..."}
+    }
+)
+print(response.output_text)
+```
+
 ## Context Manager
 
 Use the client as a context manager for automatic cleanup:
@@ -146,11 +159,37 @@ except BudError as e:
     print(f"API error: {e}")
 ```
 
+## Add Observability (Optional)
+
+Add OpenTelemetry tracing to your SDK calls with just a few lines:
+
+```python
+from bud import BudClient
+from bud.observability import configure, track_chat_completions, shutdown
+
+client = BudClient(api_key="your-api-key")
+configure(client=client, service_name="my-service")
+track_chat_completions(client)
+
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+# Span automatically created with request/response attributes
+
+shutdown()
+```
+
+See the [Observability Guide](observability/index.md) for full documentation.
+
 ## Next Steps
 
 - [Chat Completions API](api/chat.md) - Full chat API documentation
+- [Responses API](api/responses.md) - Responses endpoint with multi-turn and streaming
 - [Embeddings API](api/embeddings.md) - Text and multimodal embeddings
 - [Classifications API](api/classifications.md) - Text classification
+- [Observability Guide](observability/index.md) - Tracing, metrics, and instrumentation
+- [Telemetry Query API](api/telemetry.md) - Query collected telemetry data
 - [Configuration](configuration.md) - Advanced configuration options
 
 ## Examples
@@ -160,6 +199,7 @@ Working code examples are available in the [examples/](../examples/) directory:
 - [inference_example.py](../examples/inference_example.py) - Chat, embeddings, and classification examples
 - [simple_pipeline.py](../examples/simple_pipeline.py) - Basic pipeline usage
 - [dapr_internal.py](../examples/dapr_internal.py) - Internal service authentication
+- [observability/](../examples/observability/) - Tracing, metrics, and telemetry query examples
 
 Run examples with:
 

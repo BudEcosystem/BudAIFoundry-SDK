@@ -21,6 +21,14 @@ from bud.exceptions import (
     TimeoutError,
     ValidationError,
 )
+from bud.models.telemetry import (
+    FilterCondition,
+    FilterOperator,
+    OrderBySpec,
+    TelemetryErrorResponse,
+    TelemetryQueryResponse,
+    TelemetrySpanItem,
+)
 
 __all__ = [
     # Version
@@ -45,4 +53,11 @@ __all__ = [
     "ContentFilterError",
     "ContextLengthError",
     "ModelNotFoundError",
+    # Telemetry / Observability
+    "FilterCondition",
+    "FilterOperator",
+    "OrderBySpec",
+    "TelemetryErrorResponse",
+    "TelemetryQueryResponse",
+    "TelemetrySpanItem",
 ]

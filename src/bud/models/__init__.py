@@ -35,6 +35,14 @@ from bud.models.pipeline import (
     ValidationResult,
 )
 from bud.models.schedule import Schedule, ScheduleStatus
+from bud.models.telemetry import (
+    FilterCondition,
+    FilterOperator,
+    OrderBySpec,
+    TelemetryErrorResponse,
+    TelemetryQueryResponse,
+    TelemetrySpanItem,
+)
 from bud.models.webhook import Webhook, WebhookSecret
 
 __all__ = [
@@ -82,4 +90,11 @@ __all__ = [
     "ClassifyUsage",
     "Model",
     "ModelList",
+    # Telemetry / Observability
+    "FilterCondition",
+    "FilterOperator",
+    "OrderBySpec",
+    "TelemetryErrorResponse",
+    "TelemetryQueryResponse",
+    "TelemetrySpanItem",
 ]

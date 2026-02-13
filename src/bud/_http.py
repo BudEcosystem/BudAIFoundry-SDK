@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import contextlib
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import httpx
@@ -39,6 +39,17 @@ DEFAULT_HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
 }
+
+
+def _inject_trace_context(headers: dict[str, str]) -> dict[str, str]:
+    """Inject W3C trace context into outgoing headers (no-op if OTel unavailable)."""
+    try:
+        from opentelemetry import propagate
+
+        propagate.inject(carrier=headers)
+    except Exception:  # noqa: BLE001
+        pass
+    return headers
 
 
 class HttpClient:
@@ -129,14 +140,17 @@ class HttpClient:
             pool=5.0,  # Pool acquisition
         )
 
+        outgoing_headers = {
+            **auth_headers,
+            "Accept": "text/event-stream",
+        }
+        _inject_trace_context(outgoing_headers)
+
         with self._client.stream(
             method,
             path,
             json=json,
-            headers={
-                **auth_headers,
-                "Accept": "text/event-stream",
-            },
+            headers=outgoing_headers,
             timeout=stream_timeout,
         ) as response:
             # Check for errors before yielding
@@ -177,8 +191,9 @@ class HttpClient:
 
         while retry_count <= self._max_retries:
             try:
-                # Get auth headers for this request
+                # Get auth headers + inject trace context for this request
                 auth_headers = self._get_auth_headers()
+                _inject_trace_context(auth_headers)
 
                 response = self._client.request(
                     method,
@@ -347,6 +362,48 @@ class AsyncHttpClient:
     async def delete(self, path: str) -> Any:
         """Perform DELETE request."""
         return await self._request("DELETE", path)
+
+    @asynccontextmanager
+    async def async_stream(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+    ) -> AsyncIterator[httpx.Response]:
+        """Stream HTTP response for SSE endpoints (async).
+
+        Args:
+            method: HTTP method (typically POST).
+            path: API path.
+            json: Request body as JSON.
+
+        Yields:
+            httpx.Response object for async streaming iteration.
+        """
+        stream_timeout = httpx.Timeout(
+            connect=10.0,
+            read=600.0,
+            write=30.0,
+            pool=5.0,
+        )
+
+        outgoing_headers: dict[str, str] = {
+            "Accept": "text/event-stream",
+        }
+        _inject_trace_context(outgoing_headers)
+
+        async with self._client.stream(
+            method,
+            path,
+            json=json,
+            headers=outgoing_headers,
+            timeout=stream_timeout,
+        ) as response:
+            if not response.is_success:
+                await response.aread()
+                self._handle_response(response)
+            yield response
 
     async def _request(
         self,

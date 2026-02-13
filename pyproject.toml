@@ -41,9 +41,25 @@ dependencies = [
     "anyio>=4.0.0",
     "tomli>=2.0.0;python_version<'3.11'",
     "tomli-w>=1.0.0",
+    "openai>=1.90.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
 ]
 
 [project.optional-dependencies]
+observability-httpx = [
+    "opentelemetry-instrumentation-httpx>=0.44b0",
+]
+observability-fastapi = [
+    "opentelemetry-instrumentation-fastapi>=0.44b0",
+]
+observability-requests = [
+    "opentelemetry-instrumentation-requests>=0.44b0",
+]
+observability-internal = [
+    "bud-sdk[observability-httpx,observability-fastapi]",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

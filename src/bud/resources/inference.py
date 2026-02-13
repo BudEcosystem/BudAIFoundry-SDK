@@ -13,10 +13,11 @@ from bud.models.inference import (
     Model,
     ModelList,
 )
-from bud.resources._base import SyncResource
+from bud.resources._base import AsyncResource, SyncResource
 
 if TYPE_CHECKING:
     from bud._http import HttpClient
+    from bud._response_streaming import AsyncResponseStream, ResponseStream
 
 
 class ChatCompletions(SyncResource):
@@ -330,3 +331,298 @@ class InferenceModels(SyncResource):
         """
         data = self._http.get(f"/v1/models/{model_id}")
         return Model.model_validate(data)
+
+
+class Responses(SyncResource):
+    """OpenAI Responses API operations.
+
+    Create responses using the /v1/responses endpoint with support for
+    multi-turn conversations, tool use, and streaming.
+    """
+
+    @overload
+    def create(
+        self,
+        *,
+        model: str | None = None,
+        input: str | list[dict[str, Any]] | None = None,
+        stream: Literal[False] = False,
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_output_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        parallel_tool_calls: bool | None = None,
+        reasoning: dict[str, Any] | None = None,
+        metadata: dict[str, str] | None = None,
+        user: str | None = None,
+        prompt: dict[str, Any] | None = None,
+        store: bool | None = None,
+        background: bool | None = None,
+        service_tier: str | None = None,
+        text: dict[str, Any] | None = None,
+        truncation: str | None = None,
+        include: list[str] | None = None,
+    ) -> Any: ...  # openai.types.responses.Response
+
+    @overload
+    def create(
+        self,
+        *,
+        model: str | None = None,
+        input: str | list[dict[str, Any]] | None = None,
+        stream: Literal[True],
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_output_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        parallel_tool_calls: bool | None = None,
+        reasoning: dict[str, Any] | None = None,
+        metadata: dict[str, str] | None = None,
+        user: str | None = None,
+        prompt: dict[str, Any] | None = None,
+        store: bool | None = None,
+        background: bool | None = None,
+        service_tier: str | None = None,
+        text: dict[str, Any] | None = None,
+        truncation: str | None = None,
+        include: list[str] | None = None,
+    ) -> ResponseStream: ...
+
+    def create(
+        self,
+        *,
+        model: str | None = None,
+        input: str | list[dict[str, Any]] | None = None,
+        stream: bool = False,
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_output_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        parallel_tool_calls: bool | None = None,
+        reasoning: dict[str, Any] | None = None,
+        metadata: dict[str, str] | None = None,
+        user: str | None = None,
+        prompt: dict[str, Any] | None = None,
+        store: bool | None = None,
+        background: bool | None = None,
+        service_tier: str | None = None,
+        text: dict[str, Any] | None = None,
+        truncation: str | None = None,
+        include: list[str] | None = None,
+    ) -> Any:
+        """Create a response using the Responses API.
+
+        Args:
+            model: Model ID. Required unless ``prompt`` is provided.
+            input: Text string or list of input messages.
+            stream: If True, returns a ResponseStream.
+            instructions: System instructions for the model.
+            previous_response_id: ID of a previous response for multi-turn.
+            temperature: Sampling temperature (0-2).
+            top_p: Nucleus sampling probability.
+            max_output_tokens: Maximum tokens to generate.
+            tools: List of tools the model may call.
+            tool_choice: Controls which tool is called.
+            parallel_tool_calls: Allow parallel tool calls.
+            reasoning: Reasoning configuration.
+            metadata: Key-value metadata.
+            user: Unique user identifier.
+            prompt: Stored prompt configuration (alternative to model+input).
+            store: Whether to store the response.
+            background: Whether to run in the background.
+            service_tier: Service tier for the request.
+            text: Text generation configuration.
+            truncation: Truncation strategy.
+            include: Additional fields to include in response.
+
+        Returns:
+            openai.types.responses.Response or ResponseStream if streaming.
+
+        Raises:
+            ValueError: If neither ``model`` nor ``prompt`` is provided.
+        """
+        if model is None and prompt is None:
+            raise ValueError("At least one of 'model' or 'prompt' must be provided")
+
+        payload: dict[str, Any] = {}
+        if stream:
+            payload["stream"] = True
+
+        # Add all non-None parameters
+        optional_params = {
+            "model": model,
+            "input": input,
+            "instructions": instructions,
+            "previous_response_id": previous_response_id,
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_output_tokens": max_output_tokens,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "parallel_tool_calls": parallel_tool_calls,
+            "reasoning": reasoning,
+            "metadata": metadata,
+            "user": user,
+            "prompt": prompt,
+            "store": store,
+            "background": background,
+            "service_tier": service_tier,
+            "text": text,
+            "truncation": truncation,
+            "include": include,
+        }
+        payload.update({k: v for k, v in optional_params.items() if v is not None})
+
+        if stream:
+            from bud._response_streaming import ResponseStream
+
+            response_ctx = self._http.stream("POST", "/v1/responses", json=payload)
+            response = response_ctx.__enter__()
+            return ResponseStream(response, response_context=response_ctx)
+        else:
+            from openai.types.responses import Response
+
+            data = self._http.post("/v1/responses", json=payload)
+            return Response.model_validate(data)
+
+
+class AsyncResponses(AsyncResource):
+    """Async OpenAI Responses API operations.
+
+    Async version of Responses resource.
+    """
+
+    @overload
+    async def create(
+        self,
+        *,
+        model: str | None = None,
+        input: str | list[dict[str, Any]] | None = None,
+        stream: Literal[False] = False,
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_output_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        parallel_tool_calls: bool | None = None,
+        reasoning: dict[str, Any] | None = None,
+        metadata: dict[str, str] | None = None,
+        user: str | None = None,
+        prompt: dict[str, Any] | None = None,
+        store: bool | None = None,
+        background: bool | None = None,
+        service_tier: str | None = None,
+        text: dict[str, Any] | None = None,
+        truncation: str | None = None,
+        include: list[str] | None = None,
+    ) -> Any: ...  # openai.types.responses.Response
+
+    @overload
+    async def create(
+        self,
+        *,
+        model: str | None = None,
+        input: str | list[dict[str, Any]] | None = None,
+        stream: Literal[True],
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_output_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        parallel_tool_calls: bool | None = None,
+        reasoning: dict[str, Any] | None = None,
+        metadata: dict[str, str] | None = None,
+        user: str | None = None,
+        prompt: dict[str, Any] | None = None,
+        store: bool | None = None,
+        background: bool | None = None,
+        service_tier: str | None = None,
+        text: dict[str, Any] | None = None,
+        truncation: str | None = None,
+        include: list[str] | None = None,
+    ) -> AsyncResponseStream: ...
+
+    async def create(
+        self,
+        *,
+        model: str | None = None,
+        input: str | list[dict[str, Any]] | None = None,
+        stream: bool = False,
+        instructions: str | None = None,
+        previous_response_id: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        max_output_tokens: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        parallel_tool_calls: bool | None = None,
+        reasoning: dict[str, Any] | None = None,
+        metadata: dict[str, str] | None = None,
+        user: str | None = None,
+        prompt: dict[str, Any] | None = None,
+        store: bool | None = None,
+        background: bool | None = None,
+        service_tier: str | None = None,
+        text: dict[str, Any] | None = None,
+        truncation: str | None = None,
+        include: list[str] | None = None,
+    ) -> Any:
+        """Create a response using the Responses API (async).
+
+        Same parameters as Responses.create(). See that method for full docs.
+        """
+        if model is None and prompt is None:
+            raise ValueError("At least one of 'model' or 'prompt' must be provided")
+
+        payload: dict[str, Any] = {}
+        if stream:
+            payload["stream"] = True
+
+        optional_params = {
+            "model": model,
+            "input": input,
+            "instructions": instructions,
+            "previous_response_id": previous_response_id,
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_output_tokens": max_output_tokens,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "parallel_tool_calls": parallel_tool_calls,
+            "reasoning": reasoning,
+            "metadata": metadata,
+            "user": user,
+            "prompt": prompt,
+            "store": store,
+            "background": background,
+            "service_tier": service_tier,
+            "text": text,
+            "truncation": truncation,
+            "include": include,
+        }
+        payload.update({k: v for k, v in optional_params.items() if v is not None})
+
+        if stream:
+            from bud._response_streaming import AsyncResponseStream
+
+            response_ctx = self._http.async_stream("POST", "/v1/responses", json=payload)
+            response = await response_ctx.__aenter__()
+            return AsyncResponseStream(response, response_context=response_ctx)
+        else:
+            from openai.types.responses import Response
+
+            data = await self._http.post("/v1/responses", json=payload)
+            return Response.model_validate(data)
