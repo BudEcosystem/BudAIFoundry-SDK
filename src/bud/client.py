@@ -12,6 +12,7 @@ from bud._config import BudConfig
 from bud._http import AsyncHttpClient, HttpClient
 from bud.auth import APIKeyAuth, AuthProvider, DaprAuth, JWTAuth
 from bud.exceptions import AuthenticationError, BudError
+from bud.resources.a2a import A2A, A2A_DEFAULT_VERSION, AsyncA2A
 from bud.resources.actions import Actions, AsyncActions
 from bud.resources.audit import AsyncAudit, Audit
 from bud.resources.auth import AsyncAuth, Auth
@@ -99,6 +100,7 @@ class BudClient:
         verify_ssl: bool | None = None,
         app_url: str | None = None,
         app_timeout: float | None = None,
+        a2a_version: str | None = None,
     ) -> None:
         """Initialize the BudAI client.
 
@@ -115,6 +117,7 @@ class BudClient:
             verify_ssl: Whether to verify SSL certificates.
             app_url: App service URL for observability queries.
             app_timeout: HTTP timeout for app service requests.
+            a2a_version: A2A protocol version ("0.3" or "1.0"). Defaults to "0.3".
         """
         # Load config with defaults
         config = BudConfig.load()
@@ -180,6 +183,9 @@ class BudClient:
         self.classifications = Classifications(self._http)
         self.models = InferenceModels(self._http)
         self.responses = Responses(self._http)
+
+        # A2A protocol resource
+        self.a2a = A2A(self._http, a2a_version=a2a_version or A2A_DEFAULT_VERSION)
 
         # Lazy app service HTTP client for observability
         self._app_url = (
@@ -377,6 +383,7 @@ class AsyncBudClient:
         verify_ssl: bool | None = None,
         app_url: str | None = None,
         app_timeout: float | None = None,
+        a2a_version: str | None = None,
     ) -> None:
         """Initialize the async BudAI client.
 
@@ -388,6 +395,7 @@ class AsyncBudClient:
             verify_ssl: Whether to verify SSL certificates.
             app_url: App service URL for observability queries.
             app_timeout: HTTP timeout for app service requests.
+            a2a_version: A2A protocol version ("0.3" or "1.0"). Defaults to "0.3".
         """
         # Load config with defaults
         config = BudConfig.load()
@@ -426,6 +434,9 @@ class AsyncBudClient:
         self.clusters = AsyncClusters(self._http)
         self.audit = AsyncAudit(self._http)
         self.responses = AsyncResponses(self._http)
+
+        # A2A protocol resource
+        self.a2a = AsyncA2A(self._http, a2a_version=a2a_version or A2A_DEFAULT_VERSION)
 
         # Lazy app service HTTP client for observability
         self._app_url = (

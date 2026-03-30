@@ -85,25 +85,49 @@ class HttpClient:
     def __exit__(self, *args: Any) -> None:
         self.close()
 
-    def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+    def get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform GET request."""
-        return self._request("GET", path, params=params)
+        return self._request("GET", path, params=params, headers=headers)
 
-    def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    def post(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform POST request."""
-        return self._request("POST", path, json=json)
+        return self._request("POST", path, json=json, headers=headers)
 
-    def put(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    def put(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform PUT request."""
-        return self._request("PUT", path, json=json)
+        return self._request("PUT", path, json=json, headers=headers)
 
-    def patch(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    def patch(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform PATCH request."""
-        return self._request("PATCH", path, json=json)
+        return self._request("PATCH", path, json=json, headers=headers)
 
-    def delete(self, path: str) -> Any:
+    def delete(self, path: str, *, headers: dict[str, str] | None = None) -> Any:
         """Perform DELETE request."""
-        return self._request("DELETE", path)
+        return self._request("DELETE", path, headers=headers)
 
     @contextmanager
     def stream(
@@ -112,6 +136,7 @@ class HttpClient:
         path: str,
         *,
         json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Iterator[httpx.Response]:
         """Stream HTTP response for SSE endpoints.
 
@@ -144,6 +169,8 @@ class HttpClient:
             **auth_headers,
             "Accept": "text/event-stream",
         }
+        if headers:
+            outgoing_headers.update(headers)
         _inject_trace_context(outgoing_headers)
 
         with self._client.stream(
@@ -180,6 +207,7 @@ class HttpClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         _auth_retry: bool = False,
     ) -> Any:
         """Perform HTTP request with retries and error handling."""
@@ -193,6 +221,8 @@ class HttpClient:
             try:
                 # Get auth headers + inject trace context for this request
                 auth_headers = self._get_auth_headers()
+                if headers:
+                    auth_headers.update(headers)
                 _inject_trace_context(auth_headers)
 
                 response = self._client.request(
@@ -225,7 +255,7 @@ class HttpClient:
                     try:
                         self._auth.refresh(self._client)
                         return self._request(
-                            method, path, params=params, json=json, _auth_retry=True
+                            method, path, params=params, json=json, headers=headers, _auth_retry=True
                         )
                     except Exception:
                         pass
@@ -343,25 +373,49 @@ class AsyncHttpClient:
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
 
-    async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+    async def get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform GET request."""
-        return await self._request("GET", path, params=params)
+        return await self._request("GET", path, params=params, headers=headers)
 
-    async def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    async def post(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform POST request."""
-        return await self._request("POST", path, json=json)
+        return await self._request("POST", path, json=json, headers=headers)
 
-    async def put(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    async def put(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform PUT request."""
-        return await self._request("PUT", path, json=json)
+        return await self._request("PUT", path, json=json, headers=headers)
 
-    async def patch(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
+    async def patch(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform PATCH request."""
-        return await self._request("PATCH", path, json=json)
+        return await self._request("PATCH", path, json=json, headers=headers)
 
-    async def delete(self, path: str) -> Any:
+    async def delete(self, path: str, *, headers: dict[str, str] | None = None) -> Any:
         """Perform DELETE request."""
-        return await self._request("DELETE", path)
+        return await self._request("DELETE", path, headers=headers)
 
     @asynccontextmanager
     async def async_stream(
@@ -370,6 +424,7 @@ class AsyncHttpClient:
         path: str,
         *,
         json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> AsyncIterator[httpx.Response]:
         """Stream HTTP response for SSE endpoints (async).
 
@@ -391,6 +446,8 @@ class AsyncHttpClient:
         outgoing_headers: dict[str, str] = {
             "Accept": "text/event-stream",
         }
+        if headers:
+            outgoing_headers.update(headers)
         _inject_trace_context(outgoing_headers)
 
         async with self._client.stream(
@@ -412,6 +469,7 @@ class AsyncHttpClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         """Perform HTTP request with retries and error handling."""
         import anyio
@@ -426,6 +484,7 @@ class AsyncHttpClient:
                     path,
                     params=_filter_none(params) if params else None,
                     json=json,
+                    headers=headers,
                 )
                 return self._handle_response(response)
 
