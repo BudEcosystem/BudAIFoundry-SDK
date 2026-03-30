@@ -1,5 +1,6 @@
 """API resource modules."""
 
+from bud.resources.a2a import A2A, AsyncA2A
 from bud.resources.actions import Actions, AsyncActions
 from bud.resources.audit import AsyncAudit, Audit
 from bud.resources.auth import AsyncAuth, Auth
@@ -51,4 +52,7 @@ __all__ = [
     "InferenceModels",
     "Responses",
     "AsyncResponses",
+    # A2A resources
+    "A2A",
+    "AsyncA2A",
 ]

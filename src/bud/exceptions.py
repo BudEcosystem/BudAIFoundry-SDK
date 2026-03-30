@@ -126,3 +126,35 @@ class ModelNotFoundError(InferenceError):
 
     Check available models with client.models.list().
     """
+
+
+class A2AError(BudError):
+    """Error from an A2A operation.
+
+    Raised when the A2A agent returns an error or the response is malformed.
+
+    Common error codes (from JSON-RPC / A2A protocol):
+        -32700: Parse error
+        -32600: Invalid request
+        -32601: Method not found
+        -32602: Invalid params
+        -32603: Internal error
+        -32001: Task not found
+        -32002: Task not cancelable
+        -32003: Push notifications not supported
+        -32004: Unsupported operation
+        -32005: Content type not supported
+        -32009: Version not supported
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int | None = None,
+        data: Any = None,
+        response: Any = None,
+    ) -> None:
+        super().__init__(message, response=response)
+        self.code = code
+        self.data = data

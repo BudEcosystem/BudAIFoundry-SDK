@@ -43,6 +43,25 @@ from bud.models.telemetry import (
     TelemetryQueryResponse,
     TelemetrySpanItem,
 )
+from bud.models.a2a import (
+    AgentCapabilities,
+    AgentCard,
+    AgentInterface,
+    AgentProvider,
+    AgentSkill,
+    Artifact,
+    ListTasksResponse,
+    Message,
+    Part,
+    Role,
+    SendMessageConfiguration,
+    SendMessageResponse,
+    Task,
+    TaskArtifactUpdateEvent,
+    TaskState,
+    TaskStatus,
+    TaskStatusUpdateEvent,
+)
 from bud.models.webhook import Webhook, WebhookSecret
 
 __all__ = [
@@ -90,6 +109,24 @@ __all__ = [
     "ClassifyUsage",
     "Model",
     "ModelList",
+    # A2A Protocol
+    "AgentCapabilities",
+    "AgentCard",
+    "AgentInterface",
+    "AgentProvider",
+    "AgentSkill",
+    "Artifact",
+    "ListTasksResponse",
+    "Message",
+    "Part",
+    "Role",
+    "SendMessageConfiguration",
+    "SendMessageResponse",
+    "Task",
+    "TaskArtifactUpdateEvent",
+    "TaskState",
+    "TaskStatus",
+    "TaskStatusUpdateEvent",
     # Telemetry / Observability
     "FilterCondition",
     "FilterOperator",
