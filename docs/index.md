@@ -13,6 +13,11 @@ Official Python SDK for the BudAI Foundry Platform.
   - [Classifications](api/classifications.md)
   - [Models](api/models.md)
   - [Telemetry Query](api/telemetry.md)
+- **A2A Protocol**
+  - [Overview & Setup](a2a/index.md)
+  - [Sending Messages](a2a/send-message.md)
+  - [Task Management](a2a/task-management.md)
+  - [Agent Discovery](a2a/agent-discovery.md)
 - **Observability**
   - [Overview & Setup](observability/index.md)
   - [Auto-Instrumentation](observability/auto-instrumentation.md)
@@ -20,6 +25,7 @@ Official Python SDK for the BudAI Foundry Platform.
   - [Advanced](observability/advanced.md)
 - **Examples**
   - [Inference Examples](../examples/inference_example.py) - Chat, embeddings, classifications
+  - [A2A Examples](../examples/a2a_example.py) - Agent-to-agent protocol
   - [Pipeline Examples](../examples/simple_pipeline.py) - Basic pipeline usage
   - [Dapr Internal](../examples/dapr_internal.py) - Internal service authentication
   - [Observability Examples](../examples/observability/) - Tracing, metrics, and telemetry queries
