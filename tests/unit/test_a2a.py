@@ -19,12 +19,10 @@ from bud.models.a2a import (
     Role,
     SendMessageResponse,
     Task,
-    TaskArtifactUpdateEvent,
     TaskState,
     TaskStatus,
     TaskStatusUpdateEvent,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

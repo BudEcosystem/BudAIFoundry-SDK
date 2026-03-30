@@ -37,10 +37,18 @@ SDK methods used::
     client.a2a.get_extended_agent_card(agent_name, version=..., tenant=...)
 
 Usage:
-    python examples/a2a_example.py
+    BUD_API_KEY=your-key BUD_A2A_AGENT=agent-name python examples/a2a_example.py
+
+Environment variables:
+    BUD_API_KEY              API key (required)
+    BUD_BASE_URL             Gateway URL (default: https://gateway.bud.studio)
+    BUD_A2A_AGENT            Agent name (default: my-agent)
+    BUD_A2A_AGENT_VERSION    Agent deployment version (default: 0 = latest)
 """
 
 from __future__ import annotations
+
+import os
 
 from bud import BudClient
 from bud.exceptions import A2AError
@@ -50,10 +58,11 @@ from bud.models.a2a import TaskArtifactUpdateEvent, TaskState, TaskStatusUpdateE
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_URL = "https://gateway.dev.bud.studio"
-API_KEY = "bud_admin_1kyBHfsH66wrU5UM2uuwlUwAudHkaM5V3_q4JtoJI3w"
-AGENT_NAME = "test-backend-kimi"
-AGENT_VERSION = 1  # Agent deployment version (v1)
+BASE_URL = os.environ.get("BUD_BASE_URL", "https://gateway.bud.studio")
+API_KEY = os.environ.get("BUD_API_KEY", "")
+AGENT_NAME = os.environ.get("BUD_A2A_AGENT", "my-agent")
+_agent_ver = os.environ.get("BUD_A2A_AGENT_VERSION")
+AGENT_VERSION = int(_agent_ver) if _agent_ver else None  # None = v0 (latest)
 
 
 # ---------------------------------------------------------------------------
@@ -389,8 +398,8 @@ def main() -> None:
     print("\n Bud SDK A2A Protocol Examples\n")
 
     if not API_KEY:
-        print("Error: API_KEY is not set.")
-        print("Update the API_KEY constant at the top of this file.")
+        print("Error: BUD_API_KEY environment variable is not set.")
+        print("Usage: BUD_API_KEY=your-key BUD_A2A_AGENT=agent-name python examples/a2a_example.py")
         exit(1)
 
     # Run examples
