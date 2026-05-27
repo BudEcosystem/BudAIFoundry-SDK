@@ -14,10 +14,12 @@ from bud.auth import APIKeyAuth, AuthProvider, DaprAuth, JWTAuth
 from bud.exceptions import AuthenticationError, BudError
 from bud.resources.a2a import A2A, A2A_DEFAULT_VERSION, AsyncA2A
 from bud.resources.actions import Actions, AsyncActions
+from bud.resources.agents import Agents, AsyncAgents
 from bud.resources.audit import AsyncAudit, Audit
 from bud.resources.auth import AsyncAuth, Auth
 from bud.resources.benchmarks import AsyncBenchmarks, Benchmarks
 from bud.resources.clusters import AsyncClusters, Clusters
+from bud.resources.code_interpreter import AsyncCodeInterpreter, CodeInterpreter
 from bud.resources.events import AsyncEvents, Events
 from bud.resources.executions import AsyncExecutions, Executions
 from bud.resources.inference import (
@@ -176,6 +178,8 @@ class BudClient:
         self.benchmarks = Benchmarks(self._http)
         self.clusters = Clusters(self._http)
         self.audit = Audit(self._http)
+        self.code_interpreter = CodeInterpreter(self._http)
+        self.agents = Agents(self._http)
 
         # OpenAI-compatible inference resources
         self.chat = Chat(self._http)
@@ -433,6 +437,8 @@ class AsyncBudClient:
         self.benchmarks = AsyncBenchmarks(self._http)
         self.clusters = AsyncClusters(self._http)
         self.audit = AsyncAudit(self._http)
+        self.code_interpreter = AsyncCodeInterpreter(self._http)
+        self.agents = AsyncAgents(self._http)
         self.responses = AsyncResponses(self._http)
 
         # A2A protocol resource

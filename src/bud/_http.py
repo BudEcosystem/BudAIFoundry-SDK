@@ -125,9 +125,15 @@ class HttpClient:
         """Perform PATCH request."""
         return self._request("PATCH", path, json=json, headers=headers)
 
-    def delete(self, path: str, *, headers: dict[str, str] | None = None) -> Any:
+    def delete(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform DELETE request."""
-        return self._request("DELETE", path, headers=headers)
+        return self._request("DELETE", path, params=params, headers=headers)
 
     @contextmanager
     def stream(
@@ -413,9 +419,15 @@ class AsyncHttpClient:
         """Perform PATCH request."""
         return await self._request("PATCH", path, json=json, headers=headers)
 
-    async def delete(self, path: str, *, headers: dict[str, str] | None = None) -> Any:
+    async def delete(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         """Perform DELETE request."""
-        return await self._request("DELETE", path, headers=headers)
+        return await self._request("DELETE", path, params=params, headers=headers)
 
     @asynccontextmanager
     async def async_stream(
