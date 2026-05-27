@@ -93,10 +93,7 @@ def _extract_binding(
     """
     tool: dict[str, Any] = {}
     if isinstance(payload, dict):
-        if isinstance(payload.get("tool"), dict):
-            tool = payload["tool"]
-        else:
-            tool = payload
+        tool = payload["tool"] if isinstance(payload.get("tool"), dict) else payload
     connected_config = tool.get("connected_config") or {}
     env_id = connected_config.get("env_id") or ""
     custom_template_id = connected_config.get("custom_template_id")
