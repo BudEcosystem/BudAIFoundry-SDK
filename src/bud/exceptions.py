@@ -128,6 +128,28 @@ class ModelNotFoundError(InferenceError):
     """
 
 
+class BuildFailedError(BudError):
+    """Custom-template build ended in ``status='failed'``.
+
+    Raised by ``Template.wait_until_ready()`` when the build workflow
+    reports a failure. ``error_message`` carries the captured stderr tail
+    (capped server-side at 2 KB); ``template_id`` lets callers wire
+    diagnostics back to the template row.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        template_id: str | None = None,
+        error_message: str | None = None,
+        response: Any = None,
+    ) -> None:
+        super().__init__(message, response=response)
+        self.template_id = template_id
+        self.error_message = error_message
+
+
 class A2AError(BudError):
     """Error from an A2A operation.
 
